@@ -167,11 +167,19 @@ Firebase Authentication (раздел 4, вкладка Users):
       ".read": true,
       ".write": "auth != null && auth.uid === 'YOUR_UID'"
     },
+    "schedule-2": {
+      ".read": true,
+      ".write": "auth != null && auth.uid === 'YOUR_UID'"
+    },
     ".read": false,
     ".write": false
   }
 }
 ```
+
+> Эта копия использует узел `schedule-2` (см. `SCHEDULE_PATH` в
+> `firebase-config.js`), поэтому правило для `schedule-2` **обязательно** —
+> без него приложение не сможет ни читать, ни писать, и таблица будет пустой.
 
 Приложение никогда не пытается писать в базу до входа, поэтому лишних ошибок
 `permission-denied` в консоли браузера не будет.
