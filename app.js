@@ -380,31 +380,57 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     var lines = all.slice(agendaStart);
 
     var noise = /всел? день|весь день|^\d+\s*недел|^(январ|феврал|март|апрел|ма[йя]|июн|июл|авгус|сентябр|октябр|ноябр|декабр)/i;
-    var events = [], pending = '', open = null;
-    function closeOpen() {
-      if (open) {
-        if (open.end == null || open.end <= open.start) open.end = open.start + 60;
-        events.push(open); open = null;
-      }
+    var events = [], pendingTitle = '', pendingNotes = [], open = null;
+
+    function closeOpen(fallbackEnd) {
+      if (!open) return;
+      if (open.end == null) open.end = fallbackEnd != null ? fallbackEnd : open.start + 60;
+      events.push(open); open = null;
     }
+    function resetPending() { pendingTitle = ''; pendingNotes = []; }
+
     lines.forEach(function (line) {
       var times = timesIn(line);
-      var stripped = line.replace(new RegExp(TIME_G.source, 'g'), '').replace(/[–—|]/g, ' ').replace(/\s+-\s+/g, ' ').trim();
+      var text = line
+        .replace(new RegExp(TIME_G.source, 'g'), '')
+        .replace(/[|·•–—]/g, ' ')
+        .replace(/\s+-\s+/g, ' ')
+        .replace(/^[\s.,:;()[\]"'*]+|[\s.,:;()[\]"'*]+$/g, '')
+        .trim();
+      var isNoise = noise.test(line);
+
+      // Уже есть занятие, которому не хватает времени окончания: следующая
+      // строка — это либо его время конца (+ возможная серая подпись-комментарий),
+      // либо строка-комментарий без времени. Новым занятием такая строка не
+      // становится — так «Предложенное место: Дом» перестаёт плодить занятия.
+      if (open) {
+        if (times.length >= 2) {
+          closeOpen();
+          events.push({ title: text || pendingTitle || '', start: times[0], end: times[1], notes: pendingNotes.slice() });
+          resetPending(); return;
+        }
+        if (times.length === 1) {
+          open.end = times[0];
+          if (text && !isNoise) open.notes.push(text);
+          closeOpen(); return;
+        }
+        if (text && !isNoise) open.notes.push(text);
+        return;
+      }
+
+      if (isNoise) return;
 
       if (times.length >= 2) {
-        closeOpen();
-        events.push({ title: stripped || pending || '', start: times[0], end: times[1] });
-        pending = ''; return;
+        events.push({ title: text || pendingTitle || '', start: times[0], end: times[1], notes: pendingNotes.slice() });
+        resetPending(); return;
       }
       if (times.length === 1) {
-        if (open && open.end == null && !stripped) { open.end = times[0]; closeOpen(); return; }
-        closeOpen();
-        open = { title: stripped || pending || '', start: times[0], end: null };
-        pending = ''; return;
+        open = { title: text || pendingTitle || '', start: times[0], end: null, notes: pendingNotes.slice() };
+        resetPending(); return;
       }
-      if (noise.test(line)) { closeOpen(); return; }
-      closeOpen();
-      pending = pending ? pending + ' ' + line : line;
+      // Текст без времени: первая такая строка — название, следующие — комментарий.
+      if (pendingTitle) pendingNotes.push(line);
+      else pendingTitle = line;
     });
     closeOpen();
 
@@ -412,11 +438,15 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
       var s = clamp(e.start, DAY_START, DAY_END);
       var en = clamp(e.end, DAY_START, DAY_END);
       if (en <= s) en = clamp(s + 60, DAY_START, DAY_END);
-      return { title: (e.title || '').replace(/\s+/g, ' ').trim(), start: s, end: en };
+      return {
+        title: (e.title || '').replace(/\s+/g, ' ').trim(),
+        start: s, end: en,
+        notes: (e.notes || []).join('; ').replace(/\s+/g, ' ').trim()
+      };
     }).filter(function (e) { return e.title.length >= 2; });   // отбрасываем мусор без названия
   }
 
-  var screenshotEvents = [];   // текущий предпросмотр [{title,start,end}]
+  var screenshotEvents = [];   // текущий предпросмотр [{title,start,end,notes}]
 
   function showShotStatus(msg, kind) {
     var el = document.getElementById('shot-status');
@@ -435,13 +465,19 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
       var li = document.createElement('li');
       li.className = 'shot-row';
       var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true; cb.dataset.idx = idx;
-      var name = document.createElement('input'); name.type = 'text'; name.value = ev.title; name.className = 'shot-name';
+      var fields = document.createElement('div'); fields.className = 'shot-fields';
+      var name = document.createElement('input'); name.type = 'text'; name.value = ev.title; name.className = 'shot-name'; name.placeholder = 'Название';
       name.addEventListener('input', function () { screenshotEvents[idx].title = name.value; });
+      var times = document.createElement('div'); times.className = 'shot-times';
       var t1 = document.createElement('input'); t1.type = 'time'; t1.step = '300'; t1.value = formatTime(ev.start); t1.className = 'shot-time';
       t1.addEventListener('change', function () { screenshotEvents[idx].start = parseTime(t1.value); });
       var t2 = document.createElement('input'); t2.type = 'time'; t2.step = '300'; t2.value = formatTime(ev.end); t2.className = 'shot-time';
       t2.addEventListener('change', function () { screenshotEvents[idx].end = parseTime(t2.value); });
-      li.append(cb, name, t1, t2);
+      times.append(t1, t2);
+      var note = document.createElement('input'); note.type = 'text'; note.value = ev.notes || ''; note.className = 'shot-note'; note.placeholder = 'Комментарий (необязательно)';
+      note.addEventListener('input', function () { screenshotEvents[idx].notes = note.value; });
+      fields.append(name, times, note);
+      li.append(cb, fields);
       list.appendChild(li);
     });
     box.hidden = screenshotEvents.length === 0;
@@ -493,7 +529,7 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
       if (!cb.checked) return;
       var ev = screenshotEvents[Number(cb.dataset.idx)];
       if (!ev || !ev.title.trim()) return;
-      chosen.push({ id: uid(), title: ev.title.trim(), day: day, start: ev.start, end: ev.end, categoryId: defaultCategoryId, notes: '' });
+      chosen.push({ id: uid(), title: ev.title.trim(), day: day, start: ev.start, end: ev.end, categoryId: defaultCategoryId, notes: (ev.notes || '').trim() });
     });
     if (!chosen.length) { showShotStatus('Ни одно дело не отмечено.', 'error'); return; }
     var added = mergeNewEvents(chosen);
