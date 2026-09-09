@@ -18,6 +18,18 @@ export const firebaseConfig = {
   appId: "1:202809875744:web:4803590ecdecc132394b45"
 };
 
-// Realtime Database path under which the whole schedule document
-// (categories, events, nameColors) is stored.
-export const SCHEDULE_PATH = "schedule-2";
+// Realtime Database node holding the whole schedule document (categories,
+// events, nameColors).
+//
+// This is the copy for v.a.rybakin@gmail.com: the board lives in the
+// "schedule-2" node. Everyone (viewers included) sees "schedule-2"; the
+// original owner's node "schedule" is kept in SCHEDULE_PATH_BY_UID only so
+// that, if that account ever signs in here, it still lands on its own board.
+//
+// The Realtime Database rules must grant read (and the right uid write) on
+// "schedule-2" — otherwise the board stays stuck on «Загрузка…».
+export const DEFAULT_SCHEDULE_PATH = "schedule-2";
+export const SCHEDULE_PATH_BY_UID = {
+  "xTdhyN3sz5UX95EtIofIrX8Zjmg1": "schedule",
+  "z0bozaNZGIRn1f3sLazfCk9hff02": "schedule-2"
+};

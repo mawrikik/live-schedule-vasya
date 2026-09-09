@@ -1,7 +1,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getDatabase, ref, onValue, get, set } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
+import { firebaseConfig, DEFAULT_SCHEDULE_PATH, SCHEDULE_PATH_BY_UID } from './firebase-config.js';
 
 (function () {
   'use strict';
@@ -10,62 +10,59 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   // Seed data written to the database ONCE, and only if an explicit get()
   // check proves the node is genuinely empty AND has no /schedule/_seeded
   // flag (see seedIfEmpty). It is never used as live state and never written
-  // on a normal load. Schema: { categories, events, nameColors }.
+  // on a normal load. Schema: { categories, events, nameColors, nameOrder }.
   var DEFAULT_STATE = {
     "categories": [
       { "id": "cat-class", "name": "Занятие", "color": "#4f6bff", "isClass": true },
+      { "id": "cat-pair", "name": "Пара", "color": "#6b7280", "isClass": true },
       { "id": "cat-other", "name": "Дело", "color": "#ffab40", "isClass": false }
     ],
     "events": [
-      { "id": "e8f19d7a-388a-4051-83b4-ab7061e81ee9", "title": "Артём", "day": 0, "start": 480, "end": 540, "categoryId": "cat-class", "notes": "" },
-      { "id": "a2acbd14-695b-437e-929d-62b1516751eb", "title": "Спортзал", "day": 0, "start": 600, "end": 645, "categoryId": "cat-other", "notes": "" },
-      { "id": "ef6ad89a-34fd-4179-ae44-9d5e4fea150a", "title": "Кирилл", "day": 0, "start": 690, "end": 735, "categoryId": "cat-class", "notes": "" },
-      { "id": "c901682b-d8e5-4137-9466-fecd80a16b72", "title": "Марк ВК", "day": 0, "start": 795, "end": 855, "categoryId": "cat-class", "notes": "" },
-      { "id": "1f8cb488-83d0-400d-b90e-d5e036f40335", "title": "Данил 1500", "day": 0, "start": 855, "end": 915, "categoryId": "cat-class", "notes": "" },
-      { "id": "df607dc0-b699-4142-956c-a8f9083d79c2", "title": "Данил 1500", "day": 1, "start": 480, "end": 540, "categoryId": "cat-class", "notes": "" },
-      { "id": "3bddb8e3-b658-4952-84ff-99918cfd4ecf", "title": "Кирилл", "day": 1, "start": 555, "end": 615, "categoryId": "cat-class", "notes": "" },
-      { "id": "0c8e7198-f3bb-4558-9805-f5784c70be29", "title": "Кирилл", "day": 1, "start": 645, "end": 735, "categoryId": "cat-class", "notes": "" },
-      { "id": "22551fcb-bcdf-4415-af96-851c40a668ae", "title": "Артём", "day": 1, "start": 750, "end": 825, "categoryId": "cat-class", "notes": "" },
-      { "id": "00da1407-b66d-4e63-9b72-db2587109cae", "title": "Глеб 2500", "day": 1, "start": 855, "end": 930, "categoryId": "cat-class", "notes": "" },
-      { "id": "07f6df51-ac82-483c-b2b3-bd54a05c90cb", "title": "Артём", "day": 2, "start": 570, "end": 630, "categoryId": "cat-class", "notes": "" },
-      { "id": "f3f4205e-587d-4854-9e2a-b7659860d199", "title": "Уборка", "day": 2, "start": 675, "end": 735, "categoryId": "cat-other", "notes": "" },
-      { "id": "9a00c00e-027f-4cea-a927-7735cb82b97d", "title": "Кирилл", "day": 2, "start": 780, "end": 840, "categoryId": "cat-class", "notes": "" },
-      { "id": "80202850-7431-4719-a073-31c7d11b11d7", "title": "Егор Ким", "day": 2, "start": 855, "end": 900, "categoryId": "cat-class", "notes": "" },
-      { "id": "7b350611-f12d-4b98-8524-eae7f5f5b6dd", "title": "Артём", "day": 2, "start": 960, "end": 1050, "categoryId": "cat-class", "notes": "" },
-      { "id": "41e89b4a-d4e2-4e66-9734-8c47a41c9529", "title": "Ника физика", "day": 3, "start": 525, "end": 570, "categoryId": "cat-class", "notes": "" },
-      { "id": "b2302263-d580-4de3-a753-b3e791c38e16", "title": "Данил 1500", "day": 3, "start": 600, "end": 660, "categoryId": "cat-class", "notes": "" },
-      { "id": "0f1d5b8d-0886-4f3c-a676-d5ff3588b5f6", "title": "Максим", "day": 4, "start": 510, "end": 555, "categoryId": "cat-class", "notes": "" },
-      { "id": "fcfb0eac-d42a-4b7d-8816-7556dc9890a8", "title": "Марк ВК", "day": 4, "start": 585, "end": 630, "categoryId": "cat-class", "notes": "" },
-      { "id": "9856364d-7df7-420a-b5cd-f6ce9a1bc91e", "title": "Полина 1800", "day": 4, "start": 660, "end": 750, "categoryId": "cat-class", "notes": "" },
-      { "id": "b284bc53-d2a8-40c5-a4a3-16603a3a9477", "title": "Вика", "day": 4, "start": 750, "end": 810, "categoryId": "cat-class", "notes": "" },
-      { "id": "8e0fb898-fb56-4794-8dea-021e1d35c951", "title": "Созвон с родителями", "day": 5, "start": 570, "end": 630, "categoryId": "cat-other", "notes": "" },
-      { "id": "560dde20-fb06-429b-96dc-e0afa9325c99", "title": "Бассейн", "day": 5, "start": 645, "end": 720, "categoryId": "cat-other", "notes": "" },
-      { "id": "b7416fd1-d9a7-491d-b8e2-d3b45110baaf", "title": "София 2000", "day": 5, "start": 765, "end": 840, "categoryId": "cat-class", "notes": "" },
-      { "id": "3d8bcb50-5e43-4188-a3d6-8ebc4632100d", "title": "Спортзал", "day": 6, "start": 525, "end": 600, "categoryId": "cat-other", "notes": "" },
-      { "id": "59c4d97f-7eaa-4516-a3b0-5e1659a848c0", "title": "Ника физика", "day": 6, "start": 630, "end": 675, "categoryId": "cat-class", "notes": "" },
-      { "id": "50412733-6979-432f-b391-b9bb5bab3859", "title": "Глеб 2500", "day": 6, "start": 720, "end": 780, "categoryId": "cat-class", "notes": "" },
-      { "id": "74b75558-ab88-4823-adac-3a23f1304517", "title": "Кирилл", "day": 6, "start": 825, "end": 915, "categoryId": "cat-class", "notes": "" }
+      { "id": "eafeaa48-f6bd-48c3-bfef-afdfb6dd31a3", "title": "Спецкурс — Бычков", "day": 0, "start": 650, "end": 745, "categoryId": "cat-pair", "notes": "С/К по выбору · ауд. Ц-75 · доц. Бычков М. Е., асп. Сторожева К. Д." },
+      { "id": "29e99eec-2747-420a-b8fd-a356c2a4b645", "title": "Философские вопросы естествознания", "day": 0, "start": 810, "end": 905, "categoryId": "cat-pair", "notes": "ауд. 5-51 · доц. Эрекаев В. Д." },
+      { "id": "420179ee-64de-44b6-ad05-3e556d87af60", "title": "ФТД — Шугаев", "day": 0, "start": 920, "end": 1015, "categoryId": "cat-pair", "notes": "ФТД · ауд. Каф. · проф. Шугаев Ф. В." },
+      { "id": "d7f3b884-1c3c-4621-9e8f-c19d2d958724", "title": "Спецкурс — Дергачёв", "day": 0, "start": 1025, "end": 1120, "categoryId": "cat-pair", "notes": "С/К по выбору · ауд. Ц-75 · асс. Дергачёв М. А." },
+      { "id": "7495686e-3d37-41a0-b181-229ad7b16283", "title": "Дисц. спец. — Николаев", "day": 1, "start": 540, "end": 745, "categoryId": "cat-pair", "notes": "Д/С · ауд. Ц-75 · проф. Николаев П. Н. (2 пары)" },
+      { "id": "2feebb9f-4392-47ac-be42-d390336df917", "title": "Дисц. спец. — Коваль", "day": 1, "start": 810, "end": 1015, "categoryId": "cat-pair", "notes": "Д/С · ауд. Ц-75 · доц. Коваль Г. В. (2 пары)" },
+      { "id": "40b6351a-1e49-4d73-9e0d-f321c9cca8c5", "title": "Психология", "day": 1, "start": 1025, "end": 1120, "categoryId": "cat-pair", "notes": "ауд. им. Хохлова · ст. преп. Стрельников С. В." },
+      { "id": "1b51a499-a6f0-4f01-8e18-dcc108c35434", "title": "История России", "day": 2, "start": 540, "end": 745, "categoryId": "cat-pair", "notes": "ауд. 5-19 · н. с. Князев П. Ю." },
+      { "id": "ad1def6a-f5df-4bde-95ce-0c62d8a684df", "title": "Межфакультетский курс", "day": 2, "start": 910, "end": 1130, "categoryId": "cat-pair", "notes": "15:10–18:50 · межфакультетские курсы" },
+      { "id": "7c38c119-71bd-4eda-a1f6-6ceeab89e6c8", "title": "Военная подготовка", "day": 3, "start": 540, "end": 1015, "categoryId": "cat-pair", "notes": "9:00–16:55" },
+      { "id": "5eb7325a-6ced-4a67-84f8-42ed0c113335", "title": "Спецкурс — Савченко", "day": 3, "start": 1025, "end": 1120, "categoryId": "cat-pair", "notes": "С/К по выбору · ауд. Каф. · проф. Савченко А. М." },
+      { "id": "033d1779-24bc-43fa-a28c-b51f1b82f006", "title": "Дисц. спец. — Савченко", "day": 4, "start": 650, "end": 745, "categoryId": "cat-pair", "notes": "Д/С · ауд. Ц-75 · проф. Савченко А. М." },
+      { "id": "b75a9735-5342-4aad-bf4e-9bf6e2324ed8", "title": "Педагогика", "day": 4, "start": 810, "end": 905, "categoryId": "cat-pair", "notes": "ауд. им. Хохлова · Крашенниников Е. Е." },
+      { "id": "b277b515-8d1c-438a-ae6f-53934206828f", "title": "Правоведение", "day": 4, "start": 920, "end": 1015, "categoryId": "cat-pair", "notes": "ауд. им. Хохлова · доц. Долганин А. А." },
+      { "id": "0e22b51f-44f0-49c7-a0ef-f3e7b25e10fc", "title": "Общие вопросы преподавания физ.-мат. дисциплин", "day": 4, "start": 1025, "end": 1120, "categoryId": "cat-pair", "notes": "ауд. СФА · доц. Рыжиков С. Б." },
+      { "id": "5c71b700-673f-42b8-9358-33b542c42026", "title": "ФТД — Власов", "day": 5, "start": 540, "end": 635, "categoryId": "cat-pair", "notes": "ФТД · ауд. Ц-75 · вед. н. с. Власов А. А." },
+      { "id": "247a72a3-ea0a-4fb6-b555-87a1dce65360", "title": "Спецкурс — Боголюбов", "day": 5, "start": 650, "end": 745, "categoryId": "cat-pair", "notes": "С/К по выбору · ауд. Ц-75 · проф. Боголюбов Н. Н." },
+      { "id": "62618f89-3512-4f71-aedc-3c2b8e4fa672", "title": "Философские вопросы естествознания", "day": 5, "start": 810, "end": 905, "categoryId": "cat-pair", "notes": "ауд. 5-19 · проф. Яковлев В. А." },
+      { "id": "09c668c1-d1a5-4a88-903e-625586ead0de", "title": "Дисц. спец. — Савченко", "day": 5, "start": 1025, "end": 1120, "categoryId": "cat-pair", "notes": "Д/С · ауд. Каф. · проф. Савченко А. М." }
     ],
     "nameColors": {
-      "Артём": "#4f6bff",
-      "Спортзал": "#e5484d",
-      "Кирилл": "#30a46c",
-      "Марк ВК": "#8e4ec6",
-      "Данил 1500": "#0891b2",
-      "Глеб 2500": "#e93d82",
-      "Уборка": "#65a30d",
-      "Егор Ким": "#d97706",
-      "Ника физика": "#6366f1",
-      "Максим": "#0d9488",
-      "Полина 1800": "#c026d3",
-      "Вика": "#a16207",
-      "Созвон с родителями": "#475569",
-      "Бассейн": "#7c3aed",
-      "София 2000": "#0284c7"
-    }
+      "Спецкурс — Бычков": "#6b7280",
+      "Философские вопросы естествознания": "#6b7280",
+      "ФТД — Шугаев": "#6b7280",
+      "Спецкурс — Дергачёв": "#6b7280",
+      "Дисц спец — Николаев": "#6b7280",
+      "Дисц спец — Коваль": "#6b7280",
+      "Психология": "#6b7280",
+      "История России": "#6b7280",
+      "Межфакультетский курс": "#6b7280",
+      "Военная подготовка": "#6b7280",
+      "Спецкурс — Савченко": "#6b7280",
+      "Дисц спец — Савченко": "#6b7280",
+      "Педагогика": "#6b7280",
+      "Правоведение": "#6b7280",
+      "Общие вопросы преподавания физ -мат дисциплин": "#6b7280",
+      "ФТД — Власов": "#6b7280",
+      "Спецкурс — Боголюбов": "#6b7280"
+    },
+    "nameOrder": []
   };
 
   var DAY_START = 6 * 60, DAY_END = 24 * 60;
+  // Серый цвет категории «Пара» и всех исходных пар расписания 507.
+  var PAIR_COLOR = '#6b7280';
   var GAP_ROW_HEIGHT = 8, PX_PER_MIN = 1.1, MIN_CONTENT_HEIGHT = 30;
   var SNAP = 15, MIN_DURATION = 15;
   var DAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
@@ -76,12 +73,25 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   function todayDayIndex() { return (new Date().getDay() + 6) % 7; }
   var mobileActiveDay = todayDayIndex();
 
+  // Палитра автоцветов для имён занятий/дел. Серые и близкие к серому тона
+  // сюда не входят намеренно: серый (PAIR_COLOR) зарезервирован за категорией
+  // «Пара», поэтому обычная ячейка серой автоматически не станет.
   var NAME_PALETTE = [
     '#4f6bff', '#e5484d', '#30a46c', '#8e4ec6', '#0891b2', '#e93d82',
     '#65a30d', '#d97706', '#6366f1', '#0d9488', '#c026d3', '#a16207',
-    '#475569', '#7c3aed', '#0284c7', '#be123c', '#4d7c0f', '#b45309',
+    '#7c3aed', '#0284c7', '#be123c', '#4d7c0f', '#b45309',
     '#4338ca', '#ffab40'
   ];
+
+  // Похож ли цвет на серый (низкая насыщенность) — такие тона обычной ячейке
+  // не назначаем, чтобы не путать её с парой.
+  function isGreyish(hex) {
+    var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || '');
+    if (!m) return false;
+    var r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+    var max = Math.max(r, g, b), min = Math.min(r, g, b);
+    return (max - min) <= 40; // разброс каналов мал → цвет near-grey
+  }
 
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
 
@@ -89,20 +99,28 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   // Live state starts EMPTY (only the base categories, so the <select>s work).
   // Nothing is shown or written until the first onValue() snapshot arrives —
   // this is what prevents DEFAULT_STATE from ever overwriting real data.
-  var state = { categories: clone(DEFAULT_STATE.categories), events: [], nameColors: {} };
+  var state = { categories: clone(DEFAULT_STATE.categories), events: [], nameColors: {}, nameOrder: [] };
   var editingId = null;
+  // Занятия, выделенные кликом в «Ленте времени» — для групповых действий (панель сбоку).
+  var selectedIds = new Set();
+  // Which layout the board shows: 'timeline' (the proportional day columns)
+  // or 'matrix' (a days×names table with just the times in the cells).
+  var currentView = 'timeline';
   // Starts read-only: editing unlocks only once Firebase Auth reports a
   // signed-in user (see onAuthStateChanged in connectFirebase).
   var isReadOnly = true;
   var currentLayout = null;
 
   // Firebase wiring.
+  var dbInstance = null;
   var scheduleRef = null;
+  var scheduleUnsub = null;   // detaches the current onValue(scheduleRef)
+  var activePath = null;      // the RTDB node the board is currently bound to
   var authInstance = null;
   var currentUser = null;
   var stateLoaded = false;    // first onValue() snapshot from the server has arrived
-  var loadError = null;       // scheduleRef read failed (e.g. RTDB rules deny it)
   var seedChecked = false;    // the one-time "is the DB empty?" get() check has run
+  var pairPresetChecked = false; // the one-time "переведи исходные пары в «Пара»" pass has run
   var isConnected = false;
   var pendingWrite = false;   // a local mutation is waiting for its debounced write
   var syncTimer = null;
@@ -121,8 +139,21 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   }
   function getCategory(id) { return state.categories.find(function (c) { return c.id === id; }) || state.categories[0]; }
 
+  // Time shown in a matrix cell: only the start if the event lasts exactly one
+  // hour, otherwise "start-end" (e.g. "12:00-13:30").
+  function formatCellTime(ev) {
+    return (ev.end - ev.start === 60)
+      ? formatTime(ev.start)
+      : formatTime(ev.start) + '-' + formatTime(ev.end);
+  }
+
+  // The nameColors map is keyed by the (trimmed) title, but Realtime Database
+  // keys can't contain . # $ / [ ] or control characters. Names pasted from
+  // Google Sheets routinely have dots or slashes ("А. Иванов", "10.А"), which
+  // would make set() throw and silently abort the whole write. sanitizeName()
+  // strips exactly those characters — the event keeps its own real title.
   function nameKey(title) {
-    return (title || '').trim() || '—';
+    return sanitizeName(title) || '—';
   }
   function getNameColor(title) {
     return (state.nameColors && state.nameColors[nameKey(title)]) || NAME_PALETTE[0];
@@ -131,9 +162,91 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     var key = nameKey(title);
     if (!state.nameColors) state.nameColors = {};
     if (state.nameColors[key]) return state.nameColors[key];
-    var color = NAME_PALETTE[Object.keys(state.nameColors).length % NAME_PALETTE.length];
+    // Берём следующий цвет палитры, пропуская серые тона (они — для «Пар»).
+    var start = Object.keys(state.nameColors).length;
+    var color = NAME_PALETTE[start % NAME_PALETTE.length];
+    for (var i = 0; i < NAME_PALETTE.length && isGreyish(color); i++) {
+      color = NAME_PALETTE[(start + i + 1) % NAME_PALETTE.length];
+    }
     state.nameColors[key] = color;
     return color;
+  }
+
+  // <input type="color"> only accepts #rrggbb — coerce shorthand/blank/palette
+  // values to that shape so the swatch shows the real colour when opened.
+  function toHex6(color) {
+    var s = String(color || '').trim();
+    var m3 = /^#([0-9a-f])([0-9a-f])([0-9a-f])$/i.exec(s);
+    if (m3) return ('#' + m3[1] + m3[1] + m3[2] + m3[2] + m3[3] + m3[3]).toLowerCase();
+    return /^#[0-9a-f]{6}$/i.test(s) ? s.toLowerCase() : NAME_PALETTE[0];
+  }
+
+  // Reassign the colour of an already-coloured name (and every event/row that
+  // uses it). No-ops in read-only mode, on a bad value, or when unchanged.
+  function setNameColor(title, color) {
+    if (isReadOnly || !stateLoaded) return;
+    var next = toHex6(color);
+    if (!/^#[0-9a-f]{6}$/i.test(next)) return;
+    if (toHex6(getNameColor(title)) === next) return;
+    var key = nameKey(title);
+    commit(function () {
+      if (!state.nameColors) state.nameColors = {};
+      state.nameColors[key] = next;
+    });
+  }
+
+  // ── Подсветка одноимённых занятий ────────────────────────────────────────
+  // Пока открыта карточка занятия, выделено хотя бы одно занятие в «Ленте
+  // времени» (видно мини-меню действий) или курсор наведён на строку во
+  // «Цветах имён» — все блоки/строки кроме таких же (то же имя и цвет)
+  // затемняются, а одноимённые чуть увеличиваются. highlightKeys — набор
+  // nameKey подсвечиваемых имён. Приоритет: наведение курсора → выделение /
+  // открытая карточка → ничего (см. baseHighlightKeys / restoreHighlight).
+  var highlightKeys = [];
+  var hoverName = null;
+
+  function applyHighlight() {
+    var keySet = {};
+    highlightKeys.forEach(function (k) { keySet[k] = true; });
+    var active = highlightKeys.length > 0;
+
+    if (gridEl) {
+      gridEl.classList.toggle('highlight-active', active);
+      gridEl.querySelectorAll('.event').forEach(function (el) {
+        var ev = state.events.find(function (e) { return e.id === el.dataset.id; });
+        el.classList.toggle('hl-match', !!ev && !!keySet[nameKey(ev.title)]);
+      });
+    }
+    var mt = document.getElementById('matrix-table');
+    if (mt) {
+      mt.classList.toggle('highlight-active', active);
+      mt.querySelectorAll('tbody tr').forEach(function (tr) {
+        tr.classList.toggle('hl-match-row', !!keySet[nameKey(tr.dataset.name || '')]);
+      });
+    }
+  }
+
+  function setHighlightKeys(titles) {
+    highlightKeys = (titles || [])
+      .filter(function (t) { return t != null && t !== ''; })
+      .map(nameKey);
+    applyHighlight();
+  }
+
+  // Что подсвечивать, когда курсор никуда не наведён: имя из открытой карточки,
+  // иначе имена всех выделённых занятий, иначе — ничего.
+  function baseHighlightTitles() {
+    if (editingId) {
+      var ev = state.events.find(function (x) { return x.id === editingId; });
+      return ev ? [ev.title] : [];
+    }
+    if (selectedIds.size) return selectedEvents().map(function (e) { return e.title; });
+    return [];
+  }
+
+  function restoreHighlight() {
+    if (hoverName != null) setHighlightKeys([hoverName]);
+    else setHighlightKeys(baseHighlightTitles());
   }
 
   function escapeHtml(str) {
@@ -191,31 +304,64 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     return { start: clamp(start, DAY_START, DAY_END), end: clamp(end, DAY_START, DAY_END) };
   }
 
-  function splitRow(line) {
-    if (line.indexOf('\t') !== -1) return line.split('\t');
-    var cells = [], cur = '', inQuotes = false;
-    for (var i = 0; i < line.length; i++) {
-      var ch = line[i];
-      if (ch === '"') { inQuotes = !inQuotes; continue; }
-      if (ch === ',' && !inQuotes) { cells.push(cur); cur = ''; continue; }
-      cur += ch;
+  // Full TSV/CSV tokenizer. Google Sheets copies a range as TAB-separated
+  // values and QUOTES any cell that contains a tab, a newline or a quote
+  // ("" escapes a literal quote) — so a multi-line cell must not be split on
+  // raw "\n". Splitting the text into lines first (the old approach) tore
+  // those rows apart and fed the debris — stray quotes, half-cells, embedded
+  // carriage returns — into event titles, which then broke the Firebase write.
+  function parseDelimited(text) {
+    var delim = text.indexOf('\t') !== -1 ? '\t' : ',';
+    var rows = [], row = [], field = '', inQuotes = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else { field += ch; }
+        continue;
+      }
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === delim) { row.push(field); field = ''; }
+      else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (ch === '\r') {
+        // lone \r ends a row too; \r\n is one break, not two
+        if (text[i + 1] !== '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      }
+      else { field += ch; }
     }
-    cells.push(cur);
-    return cells;
+    row.push(field);
+    rows.push(row);
+    return rows;
+  }
+
+  // Reduce a title to a string that is safe as a Realtime Database KEY: RTDB
+  // rejects . # $ / [ ] and control chars in keys, and nameColors is keyed by
+  // title. Names pasted from Google Sheets often carry a dot ("А. Иванов",
+  // "10.А") — without this, set() throws and the whole write is aborted, so
+  // the pasted rows vanish on the next reload. The event's own title is left
+  // untouched; only its palette key goes through here.
+  function sanitizeName(s) {
+    return (s || '').replace(/[.#$\/[\]\x00-\x1F\x7F]/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   function parseImportGrid(text) {
-    var lines = text.replace(/\r\n/g, '\n').split('\n').filter(function (l) { return l.trim() !== ''; });
-    if (lines.length < 2) return { events: [], total: 0, skipped: 0 };
+    var rows = parseDelimited(text).filter(function (r) {
+      return r.some(function (c) { return c.trim() !== ''; });
+    });
+    if (rows.length < 2) return { events: [], total: 0, skipped: 0 };
 
-    var header = splitRow(lines[0]);
+    var header = rows[0];
     var dayForColumn = header.map(matchDayName);
     var defaultCategoryId = (state.categories.find(function (c) { return c.isClass; }) || state.categories[0]).id;
 
     var events = [], total = 0, skipped = 0;
-    for (var r = 1; r < lines.length; r++) {
-      var row = splitRow(lines[r]);
-      var name = (row[0] || '').trim();
+    for (var r = 1; r < rows.length; r++) {
+      var row = rows[r];
+      // Keep the real name for display (dots and all); nameKey() handles the
+      // Firebase-key side. Only control chars are unconditionally unsafe.
+      var name = (row[0] || '').replace(/[\x00-\x1F\x7F]/g, ' ').replace(/\s+/g, ' ').trim();
       if (!name) continue;
       for (var c = 1; c < row.length; c++) {
         var day = dayForColumn[c];
@@ -610,9 +756,6 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     } else if (mode === 'loading') {
       pill.classList.remove('readonly');
       text.textContent = 'Загрузка…';
-    } else if (mode === 'error') {
-      pill.classList.add('readonly');
-      text.textContent = 'Нет доступа к базе';
     } else {
       pill.classList.remove('readonly');
       text.textContent = 'Синхронизировано';
@@ -624,9 +767,6 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   // "Нет соединения" when .info/connected is false, "Синхронизировано" otherwise.
   function refreshConnectionStatus() {
     if (isReadOnly) { setStatus('readonly'); return; }
-    // A hard read failure (usually RTDB security rules that don't grant read
-    // on SCHEDULE_PATH) must not masquerade as a spinner that never resolves.
-    if (loadError && !stateLoaded) { setStatus('error'); return; }
     if (!stateLoaded) { setStatus('loading'); return; }
     if (pendingWrite || syncTimer) { setStatus('saving'); return; }
     setStatus(isConnected ? 'idle' : 'offline');
@@ -637,6 +777,7 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   // category delete buttons are drawn conditionally on isReadOnly).
   function applyReadOnlyUI() {
     var disable = isReadOnly;
+    if (isReadOnly) selectedIds.clear();
     document.getElementById('readonly-notice').hidden = !isReadOnly;
     document.getElementById('event-form').querySelectorAll('input,select,textarea,button').forEach(function (el) { el.disabled = disable; });
     document.getElementById('category-form').querySelectorAll('input,button').forEach(function (el) { el.disabled = disable; });
@@ -760,21 +901,42 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     });
   }
 
+  function handleWriteError(err) {
+    console.error('Не удалось записать в Firebase', err);
+    pendingWrite = false;
+    refreshConnectionStatus();
+    var code = (err && (err.code || err.message)) || '';
+    if (/permission_denied|PERMISSION_DENIED/i.test(code)) {
+      var uid = (currentUser && currentUser.uid) || '(не определён)';
+      showDialog(
+        'База отклонила запись: у этой учётной записи нет прав на изменение расписания.\n\n' +
+        'Ваш UID: ' + uid + '\n\n' +
+        'Добавьте его в правила Realtime Database (узел "schedule", ".write") ' +
+        'или войдите под учётной записью владельца.', false);
+      return;
+    }
+    showDialog('Не удалось сохранить изменения. Попробуйте ещё раз.', false);
+  }
+
   function flushSync() {
     syncTimer = null;
     // Never write unless: Firebase is ready, the owner is signed in (RTDB
     // rules reject anyone else), and the real data has loaded (so we can't
     // push the empty placeholder over it).
     if (!scheduleRef || !currentUser || !stateLoaded) { pendingWrite = false; refreshConnectionStatus(); return; }
-    set(scheduleRef, clone(state)).then(function () {
+    var writePromise;
+    try {
+      // set() validates keys/values synchronously and THROWS (not rejects) on
+      // bad data, so this needs its own try/catch — .catch() below wouldn't see it.
+      writePromise = set(scheduleRef, clone(state));
+    } catch (err) {
+      handleWriteError(err);
+      return;
+    }
+    writePromise.then(function () {
       pendingWrite = false;
       refreshConnectionStatus();
-    }).catch(function (err) {
-      console.error('Не удалось записать в Firebase', err);
-      pendingWrite = false;
-      refreshConnectionStatus();
-      showDialog('Не удалось сохранить изменения. Попробуйте ещё раз.', false);
-    });
+    }).catch(handleWriteError);
   }
 
   // Firebase drops empty arrays/objects, so a round-tripped node can be
@@ -786,8 +948,12 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
       : clone(DEFAULT_STATE.categories);
     var events = Array.isArray(raw.events) ? raw.events.filter(Boolean) : [];
     var nameColors = (raw.nameColors && typeof raw.nameColors === 'object') ? raw.nameColors : {};
-    var out = { categories: categories, events: events, nameColors: nameColors };
+    var nameOrder = Array.isArray(raw.nameOrder)
+      ? raw.nameOrder.filter(function (k) { return typeof k === 'string'; })
+      : [];
+    var out = { categories: categories, events: events, nameColors: nameColors, nameOrder: nameOrder };
     if (raw._seeded) out._seeded = true; // carry the one-time seed marker through
+    if (raw._pairPreset) out._pairPreset = true; // ...и маркер «исходные пары уже покрашены»
     return out;
   }
 
@@ -810,37 +976,143 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     renderCategoryList();
   }
 
-  // One-time, first-run-only seeding. Runs at most once per page load, only
-  // when signed in and connected. Does an explicit get() (single read straight
-  // from the server) and writes DEFAULT_STATE *only* if the node truly does
-  // not exist AND carries no /schedule/_seeded marker. After a successful seed
-  // the marker is set, so this can never fire twice — not even by accident, on
-  // any device. It is NOT driven by onValue(), so it cannot lose a race with
-  // the real data arriving.
+  function pathForUser(user) {
+    var uid = user && user.uid;
+    return (uid && SCHEDULE_PATH_BY_UID[uid]) || DEFAULT_SCHEDULE_PATH;
+  }
+
+  // The single source of truth handler. state is only ever replaced from here;
+  // the first snapshot flips stateLoaded, which is what unblocks commits/writes.
+  function onScheduleSnapshot(snap) {
+    var val = snap.val();
+    var hasData = val && typeof val === 'object';
+
+    if (hasData) {
+      // Don't stomp on edits the local user is still making; the echo of our
+      // own write will re-sync once the debounce has flushed. A snapshot that
+      // lands mid drag/resize is stashed and applied when the gesture ends.
+      if (pendingWrite || syncTimer) {
+        // keep current local state
+      } else if (isInteracting) {
+        pendingRemote = val;
+      } else {
+        applyRemoteState(val);
+      }
+    }
+    // Empty node (hasData === false): keep the empty placeholder on screen.
+    // seedIfEmpty() — not this handler — decides whether to populate it.
+
+    if (!stateLoaded) {
+      stateLoaded = true;
+      refreshConnectionStatus();
+    }
+    applyPairPreset();
+  }
+
+  // (Re)bind the board to a Realtime Database node. Called on connect and again
+  // whenever the signed-in user changes to one mapped to a different node.
+  // Tears down the previous listener and wipes all load/seed/sync/history state
+  // so nothing from the old node leaks into the new one.
+  function subscribeToPath(path) {
+    if (!dbInstance || path === activePath) return;
+    activePath = path;
+
+    if (scheduleUnsub) { scheduleUnsub(); scheduleUnsub = null; }
+    if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
+    pendingWrite = false;
+    pendingRemote = null;
+    stateLoaded = false;
+    seedChecked = false;
+    pairPresetChecked = false;
+    clearHistory();
+    state = { categories: clone(DEFAULT_STATE.categories), events: [], nameColors: {}, nameOrder: [] };
+    render();
+    renderCategoryOptions();
+    renderCategoryList();
+
+    scheduleRef = ref(dbInstance, path);
+    refreshConnectionStatus();
+
+    scheduleUnsub = onValue(scheduleRef, onScheduleSnapshot, function (err) {
+      console.error('Ошибка чтения из Firebase', err);
+      setStatus('offline');
+    });
+
+    seedIfEmpty();
+    applyPairPreset();
+  }
+
+  // First-run seeding — ONLY for the default node. Runs at most once per
+  // subscription, only when signed in and connected. Does an explicit get() (a
+  // single read straight from the server, so it can't lose a race with the
+  // onValue snapshot) and writes DEFAULT_STATE when the board has no lessons
+  // yet — either the node is absent, or it exists but holds no events. The
+  // _seeded marker, stamped on the first seed, permanently blocks re-seeding:
+  // once the starter data has been written, a later «Очистить всё» stays
+  // cleared. Per-user nodes (schedule-2, …) are never seeded — they start empty.
   async function seedIfEmpty() {
     if (seedChecked || !scheduleRef || !currentUser || !isConnected) return;
+    if (activePath !== DEFAULT_SCHEDULE_PATH) return;
     seedChecked = true;
     try {
       var snap = await get(scheduleRef);
-      // Seed only if the node is truly absent. Any existing content — real
-      // data, or just the /schedule/_seeded marker from a previous seed —
-      // makes snap.exists() true and blocks a second seed forever.
-      if (snap.exists()) return;
+      var val = snap.exists() ? snap.val() : null;
+      // Seeded once already — leave it alone, even if the board was later emptied.
+      if (val && val._seeded) return;
+      // Firebase may hand events back as an array or, for a sparse list, an
+      // object — treat either non-empty shape as "the board already has lessons".
+      var ev = val && val.events;
+      var hasLessons = Array.isArray(ev)
+        ? ev.length > 0
+        : !!(ev && typeof ev === 'object' && Object.keys(ev).length > 0);
+      if (hasLessons) return;
       var seed = clone(DEFAULT_STATE);
       seed._seeded = true;
       await set(scheduleRef, seed);
-      console.log('[seed] база была пуста — записаны стартовые данные один раз');
+      console.log('[seed] на доске не было занятий — записаны стартовые данные один раз');
     } catch (e) {
       seedChecked = false;                  // let a later auth/connect retry
       console.error('[seed] проверка не удалась', e);
     }
   }
 
+  // Одноразовая доводка исходного расписания 507: занятия, записанные сидом,
+  // переводятся в категорию «Пара» и красятся в серый. Работает и на уже
+  // засеянной доске. «Пары» — это события из DEFAULT_STATE (их id совпадают
+  // с тем, что сид записал в базу), так что позже добавленные вручную занятия
+  // не трогаются. Флаг _pairPreset в состоянии не даёт применить это повторно,
+  // pairPresetChecked — второй раз за сессию.
+  function applyPairPreset() {
+    if (pairPresetChecked || isReadOnly || !stateLoaded || !currentUser || !isConnected) return;
+    if (state._pairPreset) { pairPresetChecked = true; return; }
+
+    var seedIds = {};
+    DEFAULT_STATE.events.forEach(function (e) { seedIds[e.id] = true; });
+    var targets = state.events.filter(function (e) { return seedIds[e.id]; });
+    if (!targets.length) return; // не та доска (или данные ещё не догрузились) — повторим позже
+
+    pairPresetChecked = true;
+    if (!state.categories.some(function (c) { return c.id === 'cat-pair'; })) {
+      state.categories.push({ id: 'cat-pair', name: 'Пара', color: PAIR_COLOR, isClass: true });
+    }
+    if (!state.nameColors) state.nameColors = {};
+    targets.forEach(function (e) {
+      e.categoryId = 'cat-pair';
+      state.nameColors[nameKey(e.title)] = PAIR_COLOR;
+    });
+    state._pairPreset = true;
+
+    render();
+    renderCategoryOptions();
+    renderCategoryList();
+    scheduleWrite();
+    console.log('[pair-preset] ' + targets.length + ' пар переведены в категорию «Пара» и покрашены в серый');
+  }
+
   function connectFirebase() {
-    var db;
     try {
       var app = initializeApp(firebaseConfig);
-      db = getDatabase(app);
+      dbInstance = getDatabase(app);
       authInstance = getAuth(app);
     } catch (e) {
       console.error('Не удалось инициализировать Firebase. Проверьте firebase-config.js', e);
@@ -850,67 +1122,30 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
 
     // Firebase persists the session (browserLocalPersistence by default), so
     // this fires with the previously signed-in user on reload without a
-    // re-login prompt.
+    // re-login prompt. Each user is bound to their own node (see pathForUser);
+    // signing out drops back to the default node.
     onAuthStateChanged(authInstance, function (user) {
       currentUser = user || null;
       updateAuthUI();
+      subscribeToPath(pathForUser(currentUser));
       if (currentUser) {
         exitReadOnly();
         seedIfEmpty();
+        applyPairPreset();
       } else {
         enterReadOnly();
       }
     });
 
-    scheduleRef = ref(db, SCHEDULE_PATH);
-
-    onValue(ref(db, '.info/connected'), function (snap) {
+    onValue(ref(dbInstance, '.info/connected'), function (snap) {
       isConnected = snap.val() === true;
       refreshConnectionStatus();
-      if (isConnected) seedIfEmpty();
+      if (isConnected) { seedIfEmpty(); applyPairPreset(); }
     });
 
-    // The single source of truth. state is only ever replaced from here; the
-    // first snapshot flips stateLoaded, which is what unblocks commits/writes.
-    onValue(scheduleRef, function (snap) {
-      var val = snap.val();
-      var hasData = val && typeof val === 'object';
-
-      if (hasData) {
-        // Don't stomp on edits the local user is still making; the echo of our
-        // own write will re-sync once the debounce has flushed. A snapshot that
-        // lands mid drag/resize is stashed and applied when the gesture ends.
-        if (pendingWrite || syncTimer) {
-          // keep current local state
-        } else if (isInteracting) {
-          pendingRemote = val;
-        } else {
-          applyRemoteState(val);
-        }
-      }
-      // Empty node (hasData === false): keep the empty placeholder on screen.
-      // seedIfEmpty() — not this handler — decides whether to populate it.
-
-      loadError = null;
-      if (!stateLoaded) {
-        stateLoaded = true;
-        refreshConnectionStatus();
-      }
-    }, function (err) {
-      console.error('Ошибка чтения из Firebase', err);
-      var firstError = !loadError;
-      loadError = err;
-      refreshConnectionStatus();
-      if (firstError && !stateLoaded) {
-        showDialog(
-          'Не удалось загрузить расписание из базы: ' + ((err && err.message) || 'нет доступа') +
-          '. Обычно это значит, что правила безопасности Realtime Database не дают ' +
-          'доступ к узлу «' + SCHEDULE_PATH + '» — добавьте для него правило ' +
-          '".read"/".write" в консоли Firebase (см. README, раздел «Правила безопасности»).',
-          false
-        );
-      }
-    });
+    // Bind to the default node right away so visitors see it while auth
+    // resolves; the auth callback re-binds if the signed-in user owns another.
+    subscribeToPath(DEFAULT_SCHEDULE_PATH);
   }
 
   function updateAuthUI() {
@@ -1031,7 +1266,13 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   function computeLayout() {
     var y = 0;
     var segments = computeSegments().map(function (seg) {
-      var h = seg.busy ? Math.max(MIN_CONTENT_HEIGHT, Math.round((seg.to - seg.from) * PX_PER_MIN)) : GAP_ROW_HEIGHT;
+      // Занятые участки масштабируются строго линейно — PX_PER_MIN на минуту,
+      // без округления и без нижнего порога. Поэтому внутри непрерывной занятой
+      // полосы любые два момента, разнесённые на одинаковое время, разнесены и
+      // по вертикали одинаково: линии-ориентиры на ровных часах равноудалены
+      // (ровно 60*PX_PER_MIN пикс. между соседними). Пустые промежутки, как и
+      // раньше, сжимаются до GAP_ROW_HEIGHT — линии по часам там не рисуются.
+      var h = seg.busy ? (seg.to - seg.from) * PX_PER_MIN : GAP_ROW_HEIGHT;
       var item = { from: seg.from, to: seg.to, busy: seg.busy, y: y, h: h };
       y += h;
       return item;
@@ -1077,11 +1318,357 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   }
 
   function render() {
+    pruneSelection();
     currentLayout = computeLayout();
     rebuildSkeleton(currentLayout);
     renderEvents();
     renderNameColorList();
     renderDayTabs();
+    renderMatrix();
+    renderSelectionPanel();
+    restoreHighlight();
+  }
+
+  // Second format: rows are names/task titles, columns are the seven weekdays,
+  // each cell holds the time(s) for that name on that day. Same events as the
+  // timeline — this only re-presents state.events, it is not a separate table.
+  // Cells are edited in place (Google-Sheets style): a click swaps the cell for
+  // an <input>; on commit the text is parsed back into state.events, so any
+  // change is instantly visible in the timeline view and synced to Firebase.
+  function renderMatrix() {
+    var table = document.getElementById('matrix-table');
+    if (!table) return;
+
+    var rows = {};
+    state.events.forEach(function (ev) {
+      var key = nameKey(ev.title);
+      if (!rows[key]) rows[key] = { name: ev.title, days: [[], [], [], [], [], [], []] };
+      rows[key].days[ev.day].push(ev);
+    });
+
+    // Тот же порядок и та же группировка по категориям, что в «Цвета имён».
+    var keys = orderedNameKeys().filter(function (k) { return rows[k]; });
+
+    var head = '<thead><tr><th class="mx-name-h">Имя / дело</th>' +
+      DAY_NAMES.map(function (n) { return '<th>' + escapeHtml(n) + '</th>'; }).join('') +
+      '<th class="mx-color-h"></th></tr></thead>';
+
+    if (!keys.length) {
+      table.innerHTML = head + '<tbody><tr><td class="mx-empty" colspan="9">Пока нет занятий</td></tr></tbody>';
+      return;
+    }
+
+    var editable = !isReadOnly;
+    var expanded = loadExpandedNameCats();
+    var grouped = groupNameKeysByCategory(keys);
+    var parts = [];
+    var alt = false;
+
+    grouped.order.forEach(function (id) {
+      var cat = id === '__none__' ? null : getCategory(id);
+      var gk = grouped.groups[id];
+      var isOpen = !!expanded[id];
+
+      parts.push(
+        '<tr class="mx-folder-row" data-cat-id="' + escapeHtml(id) + '">' +
+          '<th class="mx-folder" colspan="9" data-cat-id="' + escapeHtml(id) + '">' +
+            '<span class="mx-folder-arrow">' + (isOpen ? '▾' : '▸') + '</span>' +
+            '<span class="mx-folder-name">' + escapeHtml(cat ? cat.name : 'Без категории') + '</span>' +
+            '<span class="mx-folder-count">' + gk.length + '</span>' +
+          '</th>' +
+        '</tr>'
+      );
+
+      gk.forEach(function (key) {
+        var row = rows[key];
+        alt = !alt;
+        var color = getNameColor(row.name);
+        var cells = row.days.map(function (list, day) {
+          list.sort(function (a, b) { return a.start - b.start || a.end - b.end; });
+          var inner = list.map(function (ev) {
+            var c = getCategory(ev.categoryId);
+            var cls = 'mx-entry' + (c.isClass ? '' : ' other-type') + (ev.cancelled ? ' cancelled' : '');
+            var note = ev.notes ? '<span class="mx-note">' + escapeHtml(ev.notes) + '</span>' : '';
+            return '<span class="' + cls + '" data-id="' + ev.id + '">' +
+              '<span class="mx-time">' + escapeHtml(formatCellTime(ev)) + '</span>' + note + '</span>';
+          }).join('');
+          return '<td class="mx-day' + (editable ? ' editable' : '') + '" data-day="' + day + '">' + inner + '</td>';
+        }).join('');
+
+        var handle = editable
+          ? '<span class="mx-drag-handle" draggable="true" title="Перетащите, чтобы изменить порядок">⠿</span>'
+          : '';
+        var dot = editable
+          ? '<input type="color" class="mx-color" value="' + toHex6(color) + '" title="Изменить цвет">'
+          : '<span class="mx-dot" style="background:' + escapeHtml(color) + '"></span>';
+
+        parts.push(
+          '<tr class="mx-row' + (alt ? ' mx-row-alt' : '') + (isOpen ? '' : ' mx-row-hidden') + '"' +
+            ' data-name="' + escapeHtml(row.name) + '" data-name-key="' + escapeHtml(key) +
+            '" data-cat-id="' + escapeHtml(id) + '">' +
+            '<th class="mx-name' + (editable ? ' editable' : '') + '">' + handle + dot +
+              '<span class="mx-name-text">' + escapeHtml(row.name) + '</span></th>' +
+            cells +
+            '<td class="mx-color-cell" style="background:' + escapeHtml(color) + '"></td>' +
+          '</tr>'
+        );
+      });
+    });
+
+    table.innerHTML = head + '<tbody>' + parts.join('') + '</tbody>';
+
+    if (editable) {
+      table.querySelectorAll('tbody tr.mx-row').forEach(function (tr) {
+        var h = tr.querySelector('.mx-drag-handle');
+        if (h) bindMxRowDrag(h, tr);
+        bindMxRowDrop(tr);
+      });
+    }
+  }
+
+  // Перетаскивание строк «Таблицы» — тот же общий порядок state.nameOrder,
+  // что и в списке «Цвета имён». Двигать можно только внутри своей категории.
+  var draggedMxKey = null;
+
+  function bindMxRowDrag(handle, tr) {
+    handle.addEventListener('dragstart', function (e) {
+      draggedMxKey = tr.dataset.nameKey;
+      tr.classList.add('mx-dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', draggedMxKey); } catch (_) { }
+      }
+    });
+    handle.addEventListener('dragend', function () {
+      draggedMxKey = null;
+      var t = document.getElementById('matrix-table');
+      if (t) t.querySelectorAll('tr.mx-dragging').forEach(function (n) { n.classList.remove('mx-dragging'); });
+    });
+  }
+
+  function bindMxRowDrop(tr) {
+    tr.addEventListener('dragover', function (e) {
+      if (draggedMxKey == null) return;
+      var body = tr.parentNode;
+      var dragEl = body && body.querySelector('tr.mx-dragging');
+      if (!dragEl || dragEl === tr) return;
+      if (dragEl.dataset.catId !== tr.dataset.catId) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      var r = tr.getBoundingClientRect();
+      var after = (e.clientY - r.top) > r.height / 2;
+      body.insertBefore(dragEl, after ? tr.nextSibling : tr);
+    });
+    tr.addEventListener('drop', function (e) {
+      if (draggedMxKey == null) return;
+      e.preventDefault();
+      var t = document.getElementById('matrix-table');
+      if (!t) return;
+      var order = Array.prototype.slice.call(t.querySelectorAll('tbody tr[data-name-key]'))
+        .map(function (n) { return n.dataset.nameKey; });
+      commit(function () { state.nameOrder = order; });
+    });
+  }
+
+  // Pull a leading time (single "9" / "9:00" or a range "9-10:30") off the front
+  // of a cell string; whatever is left over is the event's comment. A string
+  // with no leading time is treated as pure comment (the time stays put).
+  function hmValid(h, m) {
+    h = Number(h); m = (m == null || m === '') ? 0 : Number(m);
+    if (isNaN(h) || isNaN(m) || m > 59 || h > 24) return false;
+    if (h === 24 && m !== 0) return false;
+    return true;
+  }
+  function hmToMin(h, m) { return Number(h) * 60 + ((m == null || m === '') ? 0 : Number(m)); }
+
+  function parseTimeAndNote(str) {
+    var s = (str || '').trim();
+    if (!s) return { start: null, end: null, note: '' };
+
+    var range = s.match(/^(\d{1,2})(?::(\d{2}))?\s*[-–—]\s*(\d{1,2})(?::(\d{2}))?(?:\s+([\s\S]*))?$/);
+    if (range && hmValid(range[1], range[2]) && hmValid(range[3], range[4])) {
+      var st = hmToMin(range[1], range[2]), en = hmToMin(range[3], range[4]);
+      if (en > st) return { start: st, end: en, note: (range[5] || '').trim() };
+    }
+
+    var single = s.match(/^(\d{1,2})(?::(\d{2}))?(?:\s+([\s\S]*))?$/);
+    if (single && hmValid(single[1], single[2])) {
+      return { start: hmToMin(single[1], single[2]), end: null, note: (single[3] || '').trim() };
+    }
+
+    return { start: null, end: null, note: s };
+  }
+
+  // Swap `target` for a text input seeded with `initialValue`; on Enter or blur
+  // run onCommit(value), on Escape discard. Either way renderMatrix() rebuilds
+  // the affected cell from state afterwards.
+  function swapForInput(target, initialValue, onCommit) {
+    if (isReadOnly || !stateLoaded || target.querySelector('input.mx-input')) return;
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'mx-input';
+    input.value = initialValue;
+    target.classList.add('mx-editing');
+    target.innerHTML = '';
+    target.appendChild(input);
+    input.focus();
+    input.select();
+    beginInteraction();
+
+    var done = false;
+    function finish(save) {
+      if (done) return;
+      done = true;
+      input.removeEventListener('blur', onBlur);
+      var val = input.value;
+      if (save) {
+        try { onCommit(val); } catch (err) { console.error('Не удалось сохранить ячейку', err); }
+      }
+      endInteraction();
+      renderMatrix();
+    }
+    function onBlur() { finish(true); }
+    input.addEventListener('blur', onBlur);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    });
+  }
+
+  function applyTimeCellEdit(ev, value) {
+    var s = (value || '').trim();
+    if (!s) {
+      commit(function () { state.events = state.events.filter(function (x) { return x.id !== ev.id; }); });
+      return;
+    }
+    var parsed = parseTimeAndNote(s);
+    commit(function () {
+      if (parsed.start != null) {
+        var start = clamp(parsed.start, DAY_START, DAY_END - MIN_DURATION);
+        var end;
+        if (parsed.end != null) {
+          end = clamp(parsed.end, start + MIN_DURATION, DAY_END);
+        } else {
+          var dur = ev.end - ev.start;
+          end = clamp(start + (dur > 0 ? dur : 60), start + MIN_DURATION, DAY_END);
+        }
+        ev.start = start;
+        ev.end = end;
+      }
+      ev.notes = parsed.note;
+    });
+  }
+
+  function editMatrixEntry(entryEl) {
+    var ev = state.events.find(function (x) { return x.id === entryEl.dataset.id; });
+    if (!ev) return;
+    var initial = formatCellTime(ev) + (ev.notes ? ' ' + ev.notes : '');
+    swapForInput(entryEl, initial, function (value) { applyTimeCellEdit(ev, value); });
+  }
+
+  function addMatrixEntry(cellEl) {
+    var tr = cellEl.closest('tr');
+    var name = tr && tr.dataset.name;
+    var day = Number(cellEl.dataset.day);
+    if (!name) return;
+    swapForInput(cellEl, '', function (value) {
+      var parsed = parseTimeAndNote(value);
+      if (parsed.start == null) return; // no usable time → nothing to create
+      var start = clamp(parsed.start, DAY_START, DAY_END - MIN_DURATION);
+      var end = parsed.end != null
+        ? clamp(parsed.end, start + MIN_DURATION, DAY_END)
+        : clamp(start + 60, start + MIN_DURATION, DAY_END);
+      var categoryId = (state.categories.find(function (c) { return c.isClass; }) || state.categories[0]).id;
+      commit(function () {
+        ensureNameColor(name);
+        state.events.push({ id: uid(), title: name, day: day, start: start, end: end, categoryId: categoryId, notes: parsed.note });
+      });
+    });
+  }
+
+  function editMatrixName(cellEl) {
+    var tr = cellEl.closest('tr');
+    var oldName = tr && tr.dataset.name;
+    if (!oldName) return;
+    var textEl = cellEl.querySelector('.mx-name-text') || cellEl;
+    swapForInput(textEl, oldName, function (value) {
+      var next = value.trim();
+      if (!next || next === oldName) return;
+      var oldKey = nameKey(oldName);
+      var oldColor = getNameColor(oldName);
+      commit(function () {
+        state.events.forEach(function (ev) { if (nameKey(ev.title) === oldKey) ev.title = next; });
+        if (!state.nameColors) state.nameColors = {};
+        if (!state.nameColors[nameKey(next)]) state.nameColors[nameKey(next)] = oldColor;
+      });
+    });
+  }
+
+  function setView(view) {
+    currentView = view === 'matrix' ? 'matrix' : 'timeline';
+    selectedIds.clear();
+    var wrap = document.getElementById('grid-wrap');
+    if (wrap) wrap.classList.toggle('matrix-view', currentView === 'matrix');
+    var tabs = document.getElementById('view-tabs');
+    if (tabs) tabs.querySelectorAll('button').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.view === currentView);
+    });
+    render();
+  }
+
+  function bindViewTabs() {
+    var tabs = document.getElementById('view-tabs');
+    if (tabs) tabs.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-view]');
+      if (btn) setView(btn.dataset.view);
+    });
+
+    var table = document.getElementById('matrix-table');
+    if (!table) return;
+    table.addEventListener('change', function (e) {
+      var picker = e.target.closest('input.mx-color');
+      if (!picker || isReadOnly) return;
+      var tr = picker.closest('tr');
+      if (tr && tr.dataset.name) setNameColor(tr.dataset.name, picker.value);
+    });
+
+    table.addEventListener('click', function (e) {
+      // Свернуть/раскрыть папку категории — работает и в режиме «только чтение».
+      var folder = e.target.closest('th.mx-folder');
+      if (folder) { toggleNameCat(folder.dataset.catId); return; }
+
+      if (isReadOnly || e.target.closest('input.mx-input')) return;
+      // Клик по кружку-цвету открывает системный выбор цвета, а не редактор имени.
+      if (e.target.closest('input.mx-color')) return;
+      // Клик по ручке перетаскивания не должен открывать редактор имени.
+      if (e.target.closest('.mx-drag-handle')) return;
+
+      var nameCell = e.target.closest('th.mx-name');
+      if (nameCell) { editMatrixName(nameCell); return; }
+
+      var entry = e.target.closest('.mx-entry');
+      if (entry) { editMatrixEntry(entry); return; }
+
+      var dayCell = e.target.closest('td.mx-day');
+      if (dayCell && !dayCell.querySelector('.mx-entry')) { addMatrixEntry(dayCell); return; }
+    });
+  }
+
+  // Тонкие линии-ориентиры на каждом ровном часе (10:00, 15:00, …), которые
+  // попадают в «занятой» участок ленты. Они заметнее обычных швов между
+  // блоками, поэтому по ним легко читать время. В сжатых пустых промежутках
+  // линии не рисуем — там час занимает 8px и ориентир бессмыслен.
+  function addHourLines(col, layout) {
+    var busy = layout.segments.filter(function (s) { return s.busy; });
+    if (!busy.length) return;
+    for (var m = Math.ceil(DAY_START / 60) * 60; m <= DAY_END; m += 60) {
+      var min = m;
+      if (!busy.some(function (s) { return min >= s.from && min <= s.to; })) continue;
+      var line = document.createElement('div');
+      line.className = 'hour-line';
+      line.style.top = Math.round(minutesToY(layout, min)) + 'px';
+      col.appendChild(line);
+    }
   }
 
   function rebuildSkeleton(layout) {
@@ -1100,8 +1687,15 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     var timeCol = document.createElement('div');
     timeCol.className = 'time-col';
     timeCol.style.height = heightPx + 'px';
+    // Занятые участки теперь масштабируются линейно, поэтому вплотную идущие
+    // границы (из-за наложения занятий) дают близкие y. Подпись пропускаем,
+    // если она встала бы почти на предыдущую — так гуттер не превращается в
+    // нечитаемую кашу из «15:05 · 15:10 · 15:20».
+    var lastLabelY = -Infinity;
     layout.segments.forEach(function (seg) {
       if (!seg.busy) return;
+      if (seg.y - lastLabelY < 12) return;
+      lastLabelY = seg.y;
       var label = document.createElement('div');
       label.className = 'time-label';
       label.style.top = seg.y + 'px';
@@ -1117,6 +1711,7 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
       col.dataset.day = String(d);
       col.style.height = heightPx + 'px';
       col.style.backgroundImage = dayBg;
+      addHourLines(col, layout);
       body.appendChild(col);
     }
 
@@ -1192,7 +1787,7 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   function buildEventEl(ev, col, totalCols) {
     var cat = getCategory(ev.categoryId);
     var el = document.createElement('div');
-    el.className = 'event' + (cat.isClass ? '' : ' other-type') + (ev.cancelled ? ' cancelled' : '') + (isReadOnly ? ' readonly' : '');
+    el.className = 'event' + (cat.isClass ? '' : ' other-type') + (ev.cancelled ? ' cancelled' : '') + (isReadOnly ? ' readonly' : '') + (selectedIds.has(ev.id) ? ' selected' : '');
     el.dataset.id = ev.id;
     positionEventEl(el, ev, col, totalCols, currentLayout);
     el.style.background = getNameColor(ev.title);
@@ -1216,6 +1811,11 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
       el.appendChild(handleBottom);
       makeDraggable(el, ev);
       makeResizable(el, ev, handleTop, handleBottom);
+      el.addEventListener('dblclick', function (e) {
+        if (isReadOnly) return;
+        e.preventDefault();
+        openEditModal(ev.id);
+      });
     }
 
     return el;
@@ -1271,7 +1871,7 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
         if (moved) {
           commit(function () { ev.day = previewDay; ev.start = previewStart; ev.end = previewStart + duration; });
         } else {
-          openEditModal(ev.id);
+          handleEventClick(ev, e2);
         }
         endInteraction();
       }
@@ -1345,30 +1945,228 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     });
   }
 
+  // «Пара» — имя, покрашенное в серый (серый зарезервирован за парами, см.
+  // applyPairPreset). В списке «Цвета имён» такие имена уходят вниз.
+  function nameIsPair(key) {
+    return isGreyish(getNameColor(key));
+  }
+
+  // Порядок строк в списке «Цвета имён»: сперва то, что пользователь расставил
+  // вручную (state.nameOrder), затем — не попавшие туда имена по правилу
+  // «дела и обычные занятия сверху (по алфавиту), пары — снизу (по алфавиту)».
+  function orderedNameKeys() {
+    var seen = {};
+    var all = [];
+    state.events.forEach(function (ev) {
+      var key = nameKey(ev.title);
+      if (!seen[key]) { seen[key] = true; all.push(key); }
+    });
+    var explicit = (state.nameOrder || []).filter(function (k) { return seen[k]; });
+    var placed = {};
+    explicit.forEach(function (k) { placed[k] = true; });
+    var rest = all.filter(function (k) { return !placed[k]; }).sort(function (a, b) {
+      var pa = nameIsPair(a), pb = nameIsPair(b);
+      if (pa !== pb) return pa ? 1 : -1;
+      return a.localeCompare(b, 'ru');
+    });
+    return explicit.concat(rest);
+  }
+
+  var draggedNameKey = null;
+
+  function bindNameOrderDrag(handle, li) {
+    handle.addEventListener('dragstart', function (e) {
+      draggedNameKey = li.dataset.nameKey;
+      li.classList.add('dragging-row');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', draggedNameKey); } catch (_) { }
+      }
+    });
+    handle.addEventListener('dragend', function () {
+      draggedNameKey = null;
+      var list = document.getElementById('name-color-list');
+      if (list) list.querySelectorAll('li.dragging-row').forEach(function (n) { n.classList.remove('dragging-row'); });
+    });
+  }
+
+  function bindNameOrderDrop(li) {
+    li.addEventListener('dragover', function (e) {
+      if (draggedNameKey == null || li.dataset.nameKey === draggedNameKey) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+      var list = li.parentNode;
+      var dragEl = list && list.querySelector('li.dragging-row');
+      if (!dragEl || dragEl === li) return;
+      var r = li.getBoundingClientRect();
+      var after = (e.clientY - r.top) > r.height / 2;
+      list.insertBefore(dragEl, after ? li.nextSibling : li);
+    });
+    li.addEventListener('drop', function (e) {
+      e.preventDefault();
+      var list = document.getElementById('name-color-list');
+      if (!list) return;
+      var order = Array.from(list.querySelectorAll('li[data-name-key]')).map(function (n) { return n.dataset.nameKey; });
+      commit(function () { state.nameOrder = order; });
+    });
+  }
+
+  // Строки «Цвета имён» сгруппированы в сворачиваемые мини-папки по категориям.
+  // Раскрытые папки помним локально (не в общем состоянии) — по умолчанию всё
+  // свёрнуто.
+  var NC_EXPANDED_KEY = 'schedulePlannerNameColorGroups';
+  var expandedNameCats = null;
+
+  function loadExpandedNameCats() {
+    if (expandedNameCats) return expandedNameCats;
+    expandedNameCats = Object.create(null);
+    try {
+      var raw = localStorage.getItem(NC_EXPANDED_KEY);
+      if (raw) JSON.parse(raw).forEach(function (id) { expandedNameCats[id] = true; });
+    } catch (e) { }
+    return expandedNameCats;
+  }
+  function saveExpandedNameCats() {
+    try { localStorage.setItem(NC_EXPANDED_KEY, JSON.stringify(Object.keys(expandedNameCats))); } catch (e) { }
+  }
+  // Свернуть/раскрыть папку категории. Состояние общее для списка «Цвета имён»
+  // и «Таблицы», поэтому перерисовываем оба представления.
+  function toggleNameCat(id) {
+    var m = loadExpandedNameCats();
+    if (m[id]) delete m[id]; else m[id] = true;
+    saveExpandedNameCats();
+    renderNameColorList();
+    renderMatrix();
+  }
+
+  // Порядок папок для группировки имён: как категории в state.categories,
+  // не привязанные к категории имена — в «Без категории» в конце.
+  function groupNameKeysByCategory(keys) {
+    var groups = Object.create(null);
+    keys.forEach(function (k) {
+      var id = nameCategoryId(k) || '__none__';
+      (groups[id] || (groups[id] = [])).push(k);
+    });
+    var order = state.categories.map(function (c) { return c.id; }).filter(function (id) { return groups[id]; });
+    Object.keys(groups).forEach(function (id) { if (order.indexOf(id) === -1) order.push(id); });
+    return { groups: groups, order: order };
+  }
+
+  // К какой категории отнести имя: та, в которой у имени больше всего занятий
+  // (при равенстве — встретившаяся первой).
+  function nameCategoryId(key) {
+    var counts = Object.create(null);
+    var order = [];
+    state.events.forEach(function (ev) {
+      if (nameKey(ev.title) !== key) return;
+      var cat = getCategory(ev.categoryId);
+      if (!cat) return;
+      if (!(cat.id in counts)) { counts[cat.id] = 0; order.push(cat.id); }
+      counts[cat.id]++;
+    });
+    var best = order[0] || null;
+    order.forEach(function (id) { if (best == null || counts[id] > counts[best]) best = id; });
+    return best;
+  }
+
+  function buildNameColorRow(name) {
+    var li = document.createElement('li');
+    li.className = 'nc-row';
+    li.dataset.nameKey = name;
+    li.addEventListener('mouseenter', function () { hoverName = name; restoreHighlight(); });
+    li.addEventListener('mouseleave', function () { hoverName = null; restoreHighlight(); });
+    var label = document.createElement('span'); label.textContent = name;
+    if (isReadOnly) {
+      var swatch = document.createElement('span');
+      swatch.className = 'swatch';
+      swatch.style.background = getNameColor(name);
+      li.append(swatch, label);
+    } else {
+      var handle = document.createElement('span');
+      handle.className = 'drag-handle';
+      handle.textContent = '⠿';
+      handle.title = 'Перетащите, чтобы изменить порядок';
+      handle.draggable = true;
+      bindNameOrderDrag(handle, li);
+      bindNameOrderDrop(li);
+      var picker = document.createElement('input');
+      picker.type = 'color';
+      picker.className = 'swatch-input';
+      picker.value = toHex6(getNameColor(name));
+      picker.title = 'Изменить цвет «' + name + '»';
+      picker.addEventListener('change', function () { setNameColor(name, picker.value); });
+      li.append(handle, picker, label);
+    }
+    return li;
+  }
+
   function renderNameColorList() {
     var list = document.getElementById('name-color-list');
     if (!list) return;
-    var seen = {};
-    var names = [];
-    state.events.forEach(function (ev) {
-      var key = nameKey(ev.title);
-      if (!seen[key]) { seen[key] = true; names.push(key); }
-    });
-    names.sort(function (a, b) { return a.localeCompare(b, 'ru'); });
+    var names = orderedNameKeys();
     list.innerHTML = '';
-    names.forEach(function (name) {
-      var li = document.createElement('li');
-      var swatch = document.createElement('span'); swatch.className = 'swatch'; swatch.style.background = getNameColor(name);
-      var label = document.createElement('span'); label.textContent = name;
-      li.append(swatch, label);
-      list.appendChild(li);
-    });
     if (!names.length) {
-      var li = document.createElement('li');
-      li.className = 'empty-hint';
-      li.textContent = 'Пока нет занятий';
-      list.appendChild(li);
+      var empty = document.createElement('li');
+      empty.className = 'empty-hint';
+      empty.textContent = 'Пока нет занятий';
+      list.appendChild(empty);
+      return;
     }
+
+    var expanded = loadExpandedNameCats();
+    var grouped = groupNameKeysByCategory(names);
+
+    grouped.order.forEach(function (id) {
+      var cat = id === '__none__' ? null : getCategory(id);
+      var rows = grouped.groups[id];
+      var isOpen = !!expanded[id];
+
+      var folder = document.createElement('li');
+      folder.className = 'nc-folder' + (isOpen ? ' open' : '');
+      var arrow = document.createElement('span');
+      arrow.className = 'nc-arrow';
+      arrow.textContent = isOpen ? '▾' : '▸';
+      var fname = document.createElement('span');
+      fname.textContent = cat ? cat.name : 'Без категории';
+      var count = document.createElement('span');
+      count.className = 'nc-count';
+      count.textContent = rows.length;
+      folder.append(arrow, fname, count);
+      folder.addEventListener('click', function () { toggleNameCat(id); });
+      list.appendChild(folder);
+
+      rows.forEach(function (name) {
+        var row = buildNameColorRow(name);
+        if (!isOpen) row.hidden = true;
+        list.appendChild(row);
+      });
+    });
+  }
+
+  // Один раз вешаем обработчики на сам список: они принимают перетаскивание,
+  // отпущенное на пустом месте / ниже последней строки (точную позицию между
+  // строками ловят обработчики на самих <li>, см. bindNameOrderDrop).
+  function bindNameOrderList() {
+    var list = document.getElementById('name-color-list');
+    if (!list) return;
+    list.addEventListener('dragover', function (e) {
+      if (draggedNameKey == null) return;
+      e.preventDefault();
+      var dragEl = list.querySelector('li.dragging-row');
+      if (!dragEl) return;
+      var lis = Array.prototype.slice.call(list.querySelectorAll('li[data-name-key]'));
+      var last = lis[lis.length - 1];
+      if (last && last !== dragEl && e.clientY > last.getBoundingClientRect().bottom) {
+        list.appendChild(dragEl);
+      }
+    });
+    list.addEventListener('drop', function (e) {
+      if (draggedNameKey == null) return;
+      e.preventDefault();
+      var order = Array.prototype.slice.call(list.querySelectorAll('li[data-name-key]'))
+        .map(function (n) { return n.dataset.nameKey; });
+      commit(function () { state.nameOrder = order; });
+    });
   }
 
   function deleteCategory(id) {
@@ -1388,6 +2186,18 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   }
 
   function bindForms() {
+    // При добавлении занятия: как только меняешь начало, конец сам встаёт на
+    // час позже. Это обычное поле — при необходимости конец можно поправить
+    // вручную, и правка сохранится (пока снова не тронешь начало).
+    var fStart = document.getElementById('f-start');
+    var fEnd = document.getElementById('f-end');
+    if (fStart && fEnd) {
+      fStart.addEventListener('change', function () {
+        if (!fStart.value) return;
+        fEnd.value = formatTime(Math.min(parseTime(fStart.value) + 60, 23 * 60 + 59));
+      });
+    }
+
     document.getElementById('event-form').addEventListener('submit', function (e) {
       e.preventDefault();
       if (isReadOnly) return;
@@ -1440,6 +2250,11 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
       commit(function () {
         ev.title = document.getElementById('e-title').value.trim() || ev.title;
         ensureNameColor(ev.title);
+        var pickedColor = toHex6(document.getElementById('e-color').value);
+        if (/^#[0-9a-f]{6}$/i.test(pickedColor)) {
+          if (!state.nameColors) state.nameColors = {};
+          state.nameColors[nameKey(ev.title)] = pickedColor;
+        }
         ev.day = Number(document.getElementById('e-day').value);
         ev.start = clamp(start, DAY_START, DAY_END);
         ev.end = clamp(end, DAY_START, DAY_END);
@@ -1472,15 +2287,161 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     document.getElementById('e-start').value = formatTime(ev.start);
     document.getElementById('e-end').value = formatTime(ev.end);
     document.getElementById('e-category').value = ev.categoryId;
+    document.getElementById('e-color').value = toHex6(getNameColor(ev.title));
     document.getElementById('e-notes').value = ev.notes || '';
     document.getElementById('e-cancelled').checked = !!ev.cancelled;
     document.getElementById('edit-backdrop').classList.add('open');
     document.getElementById('edit-form').querySelectorAll('input,select,textarea,button').forEach(function (el) { el.disabled = isReadOnly; });
     document.getElementById('e-cancel').disabled = false;
+    restoreHighlight();
   }
   function closeEditModal() {
     editingId = null;
     document.getElementById('edit-backdrop').classList.remove('open');
+    restoreHighlight();
+  }
+
+  // ── Выделение занятий и групповые действия ────────────────────────────────
+  // Одиночный клик по занятию в «Ленте времени» не открывает карточку, а
+  // выделяет его (Ctrl/Cmd/Shift+клик добавляет/убирает из выделения; клик по
+  // единственному выделенному снимает выделение). Пока что-то выделено, сбоку
+  // висит панель: сменить категорию, отметить отменённым или удалить (Del) —
+  // сразу для всех выделенных. Двойной клик открывает карточку редактирования.
+
+  function pruneSelection() {
+    selectedIds.forEach(function (id) {
+      if (!state.events.some(function (e) { return e.id === id; })) selectedIds.delete(id);
+    });
+  }
+
+  function clearSelection() {
+    if (!selectedIds.size) return;
+    selectedIds.clear();
+    refreshSelectionUI();
+  }
+
+  function handleEventClick(ev, e) {
+    if (isReadOnly) return;
+    var id = ev.id;
+    var additive = e && (e.ctrlKey || e.metaKey || e.shiftKey);
+    if (additive) {
+      if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+    } else if (selectedIds.size === 1 && selectedIds.has(id)) {
+      selectedIds.delete(id);
+    } else {
+      selectedIds.clear();
+      selectedIds.add(id);
+    }
+    refreshSelectionUI();
+  }
+
+  // Обновить только рамку выделения, боковую панель и подсветку одноимённых
+  // занятий, без полного re-render.
+  function refreshSelectionUI() {
+    gridEl.querySelectorAll('.event').forEach(function (el) {
+      el.classList.toggle('selected', selectedIds.has(el.dataset.id));
+    });
+    renderSelectionPanel();
+    restoreHighlight();
+  }
+
+  function selectedEvents() {
+    return Array.from(selectedIds).map(function (id) {
+      return state.events.find(function (e) { return e.id === id; });
+    }).filter(Boolean);
+  }
+
+  function renderSelectionPanel() {
+    var bar = document.getElementById('selection-bar');
+    if (!bar) return;
+    var evs = selectedEvents();
+    var show = !isReadOnly && currentView === 'timeline' && evs.length > 0;
+    bar.hidden = !show;
+    if (!show) return;
+
+    document.getElementById('sel-count-n').textContent = String(evs.length);
+    document.getElementById('sel-edit').hidden = evs.length !== 1;
+
+    var classCat = state.categories.find(function (c) { return c.isClass; });
+    var otherCat = state.categories.find(function (c) { return !c.isClass; });
+    var allOther = evs.every(function (e) { var c = getCategory(e.categoryId); return c && !c.isClass; });
+    var catBtn = document.getElementById('sel-cat');
+    if (allOther && classCat) {
+      catBtn.textContent = 'Сделать занятием';
+      catBtn.dataset.target = classCat.id;
+      catBtn.disabled = false;
+    } else if (otherCat) {
+      catBtn.textContent = 'Сделать делом';
+      catBtn.dataset.target = otherCat.id;
+      catBtn.disabled = false;
+    } else {
+      catBtn.textContent = 'Сделать делом';
+      catBtn.disabled = true;
+    }
+
+    var allCancelled = evs.every(function (e) { return e.cancelled; });
+    var cancelBtn = document.getElementById('sel-cancelled');
+    cancelBtn.textContent = allCancelled ? 'Снять отмену' : 'Отметить отменённым';
+    cancelBtn.dataset.value = allCancelled ? '' : '1';
+  }
+
+  function mutateSelected(mutateFn) {
+    if (isReadOnly || !selectedIds.size) return;
+    var ids = new Set(selectedIds);
+    commit(function () {
+      state.events.forEach(function (e) { if (ids.has(e.id)) mutateFn(e); });
+    });
+    refreshSelectionUI();
+  }
+
+  function deleteSelected() {
+    if (isReadOnly || !selectedIds.size) return;
+    var ids = new Set(selectedIds);
+    var n = ids.size;
+    showDialog(n === 1 ? 'Удалить выбранное занятие?' : 'Удалить выбранные занятия: ' + n + '?', true).then(function (ok) {
+      if (!ok) return;
+      commit(function () { state.events = state.events.filter(function (e) { return !ids.has(e.id); }); });
+      selectedIds.clear();
+      refreshSelectionUI();
+    });
+  }
+
+  function bindSelectionBar() {
+    document.getElementById('sel-edit').addEventListener('click', function () {
+      var id = Array.from(selectedIds)[0];
+      if (id) openEditModal(id);
+    });
+    document.getElementById('sel-cat').addEventListener('click', function () {
+      var target = this.dataset.target;
+      if (target) mutateSelected(function (e) { e.categoryId = target; });
+    });
+    document.getElementById('sel-cancelled').addEventListener('click', function () {
+      var on = this.dataset.value === '1';
+      mutateSelected(function (e) { if (on) e.cancelled = true; else delete e.cancelled; });
+    });
+    document.getElementById('sel-delete').addEventListener('click', deleteSelected);
+    document.getElementById('sel-clear').addEventListener('click', clearSelection);
+
+    var scroll = document.getElementById('grid-scroll');
+    if (scroll) scroll.addEventListener('click', function (e) {
+      if (isReadOnly || e.target.closest('.event')) return;
+      clearSelection();
+    });
+  }
+
+  function bindSelectionKeys() {
+    document.addEventListener('keydown', function (e) {
+      if (isReadOnly || !selectedIds.size) return;
+      var t = e.target, tag = t && t.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (t && t.isContentEditable)) return;
+      if (document.querySelector('.modal-backdrop.open')) return;
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteSelected();
+      } else if (e.key === 'Escape') {
+        clearSelection();
+      }
+    });
   }
 
   var SIDEBAR_COLLAPSE_KEY = 'schedulePlannerSidebarCollapsed';
@@ -1540,6 +2501,10 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     bindSidebarToggle();
     bindSidebarBackdrop();
     bindDayTabs();
+    bindViewTabs();
+    bindNameOrderList();
+    bindSelectionBar();
+    bindSelectionKeys();
 
     // Locked until Firebase Auth reports a signed-in user.
     updateAuthUI();

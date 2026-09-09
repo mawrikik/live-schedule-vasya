@@ -121,7 +121,11 @@
     overflow-y: auto;
     overflow-x: hidden;
     transition: width .2s ease, padding .2s ease;
+    /* Полосу прокрутки выносим к левому краю панели: контейнер в rtl,
+       содержимое возвращаем в ltr. */
+    direction: rtl;
   }
+  .sidebar > * { direction: ltr; }
   .layout.sidebar-collapsed .sidebar {
     width: 0;
     padding-left: 0;
@@ -248,6 +252,14 @@
   .category-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 7px; }
   .category-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
   .category-list .swatch { width: 13px; height: 13px; border-radius: 4px; flex: none; }
+  .category-list .swatch-input {
+    width: 16px; height: 16px; flex: none;
+    padding: 0; border: 1px solid var(--border); border-radius: 4px;
+    background: none; cursor: pointer;
+  }
+  .category-list .swatch-input::-webkit-color-swatch-wrapper { padding: 0; }
+  .category-list .swatch-input::-webkit-color-swatch { border: none; border-radius: 3px; }
+  .category-list .swatch-input::-moz-color-swatch { border: none; border-radius: 3px; }
   .category-list .style-preview {
     width: 13px; height: 13px; border-radius: 4px; flex: none;
     border: 2px solid var(--muted); background: transparent;
@@ -261,6 +273,43 @@
   .category-list .cat-type { margin-left: auto; font-size: 11px; color: var(--muted); }
   .category-list .cat-del { border: none; background: none; color: var(--muted); padding: 0 4px; font-size: 15px; }
   .category-list .cat-del:hover { color: var(--warn); }
+
+  /* «Цвета имён»: строку можно перетаскивать за точечную ручку, меняя порядок. */
+  #name-color-list li.dragging-row { opacity: .4; }
+  #name-color-list .drag-handle {
+    flex: none;
+    cursor: grab;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1;
+    letter-spacing: -1px;
+    user-select: none;
+  }
+  #name-color-list .drag-handle:active { cursor: grabbing; }
+
+  /* «Цвета имён» сгруппированы в сворачиваемые мини-папки по категориям. */
+  #name-color-list .nc-folder {
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 3px 0;
+  }
+  #name-color-list .nc-folder:hover { color: var(--accent); }
+  #name-color-list .nc-arrow { flex: none; width: 10px; font-size: 10px; color: var(--muted); }
+  #name-color-list .nc-count {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted);
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 7px;
+  }
+  #name-color-list .nc-row { padding-left: 16px; }
+  #name-color-list .nc-row[hidden] { display: none; }
 
   .grid-wrap { flex: 1; overflow: hidden; position: relative; display: flex; flex-direction: column; }
   .grid-scroll { flex: 1; overflow: auto; }
@@ -303,6 +352,15 @@
   }
   .day-col:last-child { border-right: none; }
 
+  /* Линия-ориентир на ровном часе — заметнее обычных швов между блоками. */
+  .hour-line {
+    position: absolute;
+    left: 0; right: 0;
+    border-top: 1px solid var(--muted);
+    opacity: .35;
+    pointer-events: none;
+  }
+
   .event {
     position: absolute;
     border-radius: 7px;
@@ -315,7 +373,22 @@
     cursor: grab;
     box-shadow: var(--shadow);
     user-select: none;
+    /* Чуть прозрачные, чтобы линии-ориентиры по часам просвечивали сквозь блок. */
+    opacity: .9;
+    transition: opacity .16s ease, transform .16s ease;
   }
+
+  /* Подсветка «таких же» занятий: пока открыта карточка занятия или курсор
+     наведён на имя/цвет во «Цветах имён», все блоки кроме одноимённых (то же
+     имя и цвет) тускнеют, а одноимённые чуть подрастают. */
+  .schedule-grid.highlight-active .event { opacity: .26; }
+  .schedule-grid.highlight-active .event.cancelled { opacity: .1; }
+  .schedule-grid.highlight-active .event.hl-match {
+    opacity: 1;
+    transform: scale(1.05);
+    z-index: 17;
+  }
+  .schedule-grid.highlight-active .event.hl-match.cancelled { opacity: .4; }
   /* Дела (не занятия) выглядят подчёркнуто иначе, чем занятия: пунктирная
      окаёмка по всему периметру, широкая пунктирная левая грань, скруглённее
      углы и лёгкая диагональная штриховка поверх цвета имени. */
@@ -332,17 +405,8 @@
     pointer-events: none;
   }
 
-  /* Отменённое занятие/дело: приглушено и перечёркнуто — и текст, и вся ячейка. */
-  .event.cancelled { opacity: .5; }
-  .event.cancelled .ev-title, .event.cancelled .ev-time { text-decoration: line-through; }
-  .event.cancelled::after {
-    content: "";
-    position: absolute;
-    left: -6px; right: -6px; top: 50%;
-    border-top: 2px solid rgba(255,255,255,.92);
-    transform: rotate(-5deg);
-    pointer-events: none;
-  }
+  /* Отменённое занятие/дело: не перечёркивается, а становится прозрачным на 70%. */
+  .event.cancelled { opacity: .3; }
 
   .event .ev-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .event .ev-time {
@@ -355,6 +419,32 @@
   .event .resize-handle.bottom { bottom: 0; }
   .event.dragging { opacity: .85; z-index: 20; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
   .event.readonly { cursor: default; }
+  .event.selected { outline: 2px solid var(--accent); outline-offset: 2px; z-index: 16; }
+
+  /* Панель групповых действий: узкая горизонтальная полоса, видна, пока
+     выбрано хотя бы одно занятие. Всплывает поверх элементов интерфейса
+     над расписанием (вкладки форматов / дней), не сдвигая саму сетку вниз. */
+  .selection-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface-alt);
+    border-bottom: 2px solid var(--accent);
+    box-shadow: 0 6px 20px rgba(0,0,0,.18);
+    overflow-x: auto;
+  }
+  .selection-bar[hidden] { display: none; }
+  .selection-bar .sel-count { font-size: 12.5px; color: var(--muted); font-weight: 600; margin-right: 2px; }
+  .selection-bar button { width: auto; padding: 6px 12px; font-size: 12.5px; }
+  .selection-bar button[hidden] { display: none; }
+  .selection-bar #sel-clear { margin-left: auto; }
 
   .modal-backdrop {
     display: none; position: fixed; inset: 0;
@@ -396,6 +486,173 @@
     font-weight: 600;
   }
   .day-tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+  /* Переключатель форматов расписания (лента времени / таблица). */
+  .view-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex: none;
+  }
+  .view-tabs button {
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-alt);
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .view-tabs button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+  /* Второй формат: строки — имена/названия дел, столбцы — дни недели,
+     в ячейках — время (только начало, если занятие длится ровно час,
+     иначе «начало-конец»). Те же данные, что и в ленте времени. */
+  .matrix-scroll { display: none; flex: 1; overflow: auto; }
+  .grid-wrap.matrix-view .grid-scroll { display: none; }
+  .grid-wrap.matrix-view .day-tabs { display: none !important; }
+  .grid-wrap.matrix-view .matrix-scroll { display: block; }
+
+  .matrix-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12.5px; }
+  .matrix-table th, .matrix-table td {
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    padding: 6px 10px;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .matrix-table thead th {
+    position: sticky; top: 0; z-index: 2;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    font-family: "Schibsted Grotesk", "IBM Plex Sans", sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .matrix-table th.mx-name, .matrix-table th.mx-name-h {
+    position: sticky; left: 0; z-index: 1;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    text-align: left;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .matrix-table thead th.mx-name-h { z-index: 3; }
+  .matrix-table tbody tr.mx-row-alt th.mx-name,
+  .matrix-table tbody tr.mx-row-alt td { background: var(--surface-alt); }
+  .matrix-table td.mx-day { min-width: 96px; }
+  .matrix-table tr.mx-row-hidden { display: none; }
+
+  /* Строки «Таблицы» сгруппированы в сворачиваемые мини-папки по категориям —
+     тот же принцип, что в списке «Цвета имён». */
+  .matrix-table th.mx-folder {
+    position: sticky; left: 0; z-index: 1;
+    background: var(--surface-alt);
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    font-weight: 700;
+  }
+  .matrix-table th.mx-folder:hover { color: var(--accent); }
+  .matrix-table .mx-folder-arrow { display: inline-block; width: 12px; font-size: 10px; color: var(--muted); }
+  .matrix-table .mx-folder-count {
+    margin-left: 8px;
+    font-size: 11px; font-weight: 500;
+    color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 0 7px;
+  }
+
+  /* Ручка перетаскивания строки (порядок общий с «Цвета имён»). */
+  .matrix-table .mx-drag-handle {
+    display: inline-block;
+    margin-right: 6px;
+    cursor: grab;
+    color: var(--muted);
+    font-size: 12px; line-height: 1; letter-spacing: -1px;
+    vertical-align: middle;
+    user-select: none;
+  }
+  .matrix-table .mx-drag-handle:active { cursor: grabbing; }
+  .matrix-table tr.mx-dragging { opacity: .4; }
+
+  /* Цветовая метка имени у правого края строки — тот же цвет, что у блока
+     занятия в «Ленте времени». */
+  .matrix-table th.mx-color-h { width: 12px; min-width: 12px; padding: 0; }
+  .matrix-table td.mx-color-cell {
+    width: 12px; min-width: 12px; padding: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  /* Ячейку можно редактировать «как в Google Таблицах»: клик открывает
+     инлайн-поле ввода (см. swapForInput в app.js). */
+  .matrix-table td.mx-day.editable, .matrix-table th.mx-name.editable { cursor: text; }
+  .matrix-table td.mx-day.editable:hover, .matrix-table th.mx-name.editable:hover { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+  .mx-dot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 8px; vertical-align: middle; flex: none; }
+  .mx-color {
+    width: 15px; height: 15px; flex: none;
+    padding: 0; margin-right: 8px; vertical-align: middle;
+    border: 1px solid var(--border); border-radius: 3px;
+    background: none; cursor: pointer;
+  }
+  .mx-color::-webkit-color-swatch-wrapper { padding: 0; }
+  .mx-color::-webkit-color-swatch { border: none; border-radius: 2px; }
+  .mx-color::-moz-color-swatch { border: none; border-radius: 2px; }
+  .mx-name-text { vertical-align: middle; }
+
+  .mx-entry { display: inline-flex; align-items: baseline; gap: 5px; }
+  .mx-entry + .mx-entry { margin-left: 8px; padding-left: 8px; border-left: 1px solid var(--border); }
+  .mx-time {
+    font-family: "IBM Plex Mono", monospace;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .mx-note { color: var(--muted); font-size: 11px; font-style: italic; white-space: normal; text-align: left; }
+  .mx-entry.other-type .mx-time { color: var(--warn); font-style: italic; }
+  .mx-entry.cancelled { opacity: .3; }
+
+  /* Та же подсветка одноимённых строк в «Таблице» (см. .schedule-grid.highlight-active). */
+  .matrix-table.highlight-active tbody tr td,
+  .matrix-table.highlight-active tbody tr th.mx-name {
+    opacity: .32;
+    transition: opacity .16s ease;
+  }
+  .matrix-table.highlight-active tbody tr.hl-match-row td,
+  .matrix-table.highlight-active tbody tr.hl-match-row th.mx-name { opacity: 1; }
+  .matrix-table.highlight-active tbody tr.mx-folder-row th { opacity: 1; }
+  .matrix-table.highlight-active tbody tr.hl-match-row .mx-name-text,
+  .matrix-table.highlight-active tbody tr.hl-match-row .mx-entry {
+    display: inline-block;
+    transform: scale(1.05);
+    transition: transform .16s ease;
+  }
+
+  .mx-input {
+    width: 100%;
+    min-width: 84px;
+    font: inherit;
+    padding: 3px 5px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .matrix-table th.mx-name .mx-input { min-width: 130px; }
+  .mx-entry .mx-input { min-width: 124px; }
+  .mx-entry.mx-editing { display: block; }
+  .mx-editing { padding: 3px !important; }
+
+  .mx-empty { color: var(--muted); font-style: italic; padding: 22px; text-align: center; }
+
+  .mx-hint { display: none; align-self: center; margin-left: auto; font-size: 11.5px; color: var(--muted); }
+  .grid-wrap.matrix-view .mx-hint { display: block; }
+
+  .tl-hint { display: none; align-self: center; margin-left: auto; font-size: 11.5px; color: var(--muted); }
+  .grid-wrap:not(.matrix-view) .tl-hint { display: block; }
 
   .sidebar-backdrop {
     display: none;
@@ -444,6 +701,7 @@
     .layout.sidebar-collapsed .sidebar-toggle { left: 10px; }
 
     .day-tabs { display: flex; padding-left: 44px; } /* clears the sidebar toggle button */
+    .view-tabs { padding-left: 44px; } /* clears the sidebar toggle button */
 
     .grid-header, .grid-body { grid-template-columns: var(--time-col-width) 1fr; }
     .day-head.hidden-mobile, .day-col.hidden-mobile { display: none; }
@@ -456,6 +714,15 @@
     .event .resize-handle { height: 12px; }
     .event .resize-handle.top { top: -3px; }
     .event .resize-handle.bottom { bottom: -3px; }
+
+    .matrix-table { min-width: 560px; }
+    .grid-wrap.matrix-view .mx-hint { display: none; }
+    .tl-hint { display: none !important; }
+
+    .selection-bar { gap: 6px; flex-wrap: wrap; }
+    .selection-bar button { flex: 1 1 40%; }
+    .selection-bar #sel-clear { margin-left: 0; }
+    .selection-bar .sel-count { flex-basis: 100%; }
 
     .shot-times .shot-time { flex: 1; width: auto; }
 
@@ -582,10 +849,27 @@
     <button type="button" id="sidebar-toggle" class="sidebar-toggle" title="Свернуть панель">◀</button>
     <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
-    <main class="grid-wrap">
+    <main class="grid-wrap" id="grid-wrap">
+      <div class="view-tabs" id="view-tabs">
+        <button type="button" data-view="timeline" class="active">Лента времени</button>
+        <button type="button" data-view="matrix">Таблица</button>
+        <span class="mx-hint">Кликните на ячейку, чтобы изменить время или вписать комментарий к занятию</span>
+        <span class="tl-hint">Клик — выделить занятие, двойной клик — открыть карточку</span>
+      </div>
       <div class="day-tabs" id="day-tabs"></div>
+      <div id="selection-bar" class="selection-bar" hidden="">
+        <span class="sel-count">Выбрано: <b id="sel-count-n">0</b></span>
+        <button type="button" id="sel-edit" class="btn-secondary">Изменить</button>
+        <button type="button" id="sel-cat" class="btn-secondary">Сделать делом</button>
+        <button type="button" id="sel-cancelled" class="btn-secondary">Отметить отменённым</button>
+        <button type="button" id="sel-delete" class="btn-danger">Удалить (Del)</button>
+        <button type="button" id="sel-clear" class="btn-secondary">Снять выделение</button>
+      </div>
       <div class="grid-scroll" id="grid-scroll">
         <div class="schedule-grid" id="schedule-grid"></div>
+      </div>
+      <div class="matrix-scroll" id="matrix-scroll">
+        <table class="matrix-table" id="matrix-table"></table>
       </div>
     </main>
 
@@ -612,8 +896,12 @@
         <label>Конец<input type="time" id="e-end" step="300" required=""></label>
       </div>
       <label>Категория<select id="e-category"></select></label>
+      <label>Цвет
+        <input type="color" id="e-color">
+        <span class="hint" style="margin:0">Применяется ко всем занятиям с этим названием</span>
+      </label>
       <label>Заметка<textarea id="e-notes" rows="2"></textarea></label>
-      <label class="checkbox"><input type="checkbox" id="e-cancelled"> Отменено (зачеркнуть в расписании)</label>
+      <label class="checkbox"><input type="checkbox" id="e-cancelled"> Отменено (бледное в расписании)</label>
       <div class="modal-actions">
         <button type="button" id="e-delete" class="btn-danger">Удалить</button>
         <div class="spacer"></div>
@@ -640,7 +928,7 @@
 <div class="modal-backdrop" id="confirm-backdrop">
   <div class="modal">
     <h2 id="confirm-title">Подтверждение</h2>
-    <p id="confirm-message" class="hint" style="margin-bottom: 4px;"></p>
+    <p id="confirm-message" class="hint" style="margin-bottom: 4px; white-space: pre-line;"></p>
     <div class="modal-actions">
       <div class="spacer"></div>
       <button type="button" id="confirm-cancel" class="btn-secondary">Отмена</button>
