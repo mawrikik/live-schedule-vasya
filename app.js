@@ -101,6 +101,7 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   var authInstance = null;
   var currentUser = null;
   var stateLoaded = false;    // first onValue() snapshot from the server has arrived
+  var loadError = null;       // scheduleRef read failed (e.g. RTDB rules deny it)
   var seedChecked = false;    // the one-time "is the DB empty?" get() check has run
   var isConnected = false;
   var pendingWrite = false;   // a local mutation is waiting for its debounced write
@@ -236,16 +237,10 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     el.hidden = false;
   }
 
-  function runImport(text) {
-    if (isReadOnly) return;
-    if (!text || !text.trim()) { showImportStatus('Вставьте скопированные ячейки или выберите файл.', 'error'); return; }
-    var parsedResult = parseImportGrid(text);
-    var parsed = parsedResult.events, total = parsedResult.total, skipped = parsedResult.skipped;
-    if (!total) {
-      showImportStatus('Не нашлось ни одной ячейки с временем. Проверьте, что имена — в первом столбце, а дни недели — в первой строке.', 'error');
-      return;
-    }
-
+  // Add only the events that aren't already on the board (same title + day +
+  // start + end). Runs through commit(), so it's one undoable step and one
+  // debounced write. Returns how many were actually new.
+  function mergeNewEvents(parsed) {
     var existingKey = function (ev) { return ev.title + '|' + ev.day + '|' + ev.start + '|' + ev.end; };
     var existing = {};
     state.events.forEach(function (ev) { existing[existingKey(ev)] = true; });
@@ -256,19 +251,292 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
       existing[key] = true;
       toAdd.push(ev);
     });
+    if (toAdd.length) {
+      commit(function () { toAdd.forEach(function (ev) { ensureNameColor(ev.title); state.events.push(ev); }); });
+    }
+    return toAdd.length;
+  }
 
-    if (!toAdd.length) {
+  function runImport(text) {
+    if (isReadOnly) return;
+    if (!text || !text.trim()) { showImportStatus('Вставьте скопированные ячейки или выберите файл.', 'error'); return; }
+    var parsedResult = parseImportGrid(text);
+    var parsed = parsedResult.events, total = parsedResult.total, skipped = parsedResult.skipped;
+    if (!total) {
+      showImportStatus('Не нашлось ни одной ячейки с временем. Проверьте, что имена — в первом столбце, а дни недели — в первой строке.', 'error');
+      return;
+    }
+
+    var added = mergeNewEvents(parsed);
+    if (!added) {
       showImportStatus('Добавлено занятий: 0, уже было: ' + parsed.length + (skipped > 0 ? ', не удалось распознать: ' + skipped : '') + '.', 'error');
       return;
     }
 
-    commit(function () { toAdd.forEach(function (ev) { ensureNameColor(ev.title); state.events.push(ev); }); });
-
-    var parts = ['Добавлено занятий: ' + toAdd.length];
-    var dupes = parsed.length - toAdd.length;
+    var parts = ['Добавлено занятий: ' + added];
+    var dupes = parsed.length - added;
     if (dupes > 0) parts.push('уже было: ' + dupes);
     if (skipped > 0) parts.push('не удалось распознать: ' + skipped);
     showImportStatus(parts.join(', ') + '.', 'ok');
+  }
+
+  // ── Импорт из скриншота календаря телефона ─────────────────────────────
+  // Экран «месяц + список дел выбранного дня» (Apple / Samsung Календарь):
+  // распознаём текст (Tesseract.js), достаём строки повестки со временем,
+  // а день недели определяем по подсвеченной ячейке в сетке месяца.
+
+  var tesseractPromise = null;
+  function loadTesseract() {
+    if (tesseractPromise) return tesseractPromise;
+    tesseractPromise = new Promise(function (resolve, reject) {
+      if (window.Tesseract) { resolve(window.Tesseract); return; }
+      var s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/7.0.0/tesseract.min.js';
+      s.onload = function () { window.Tesseract ? resolve(window.Tesseract) : reject(new Error('Tesseract не загрузился')); };
+      s.onerror = function () { reject(new Error('Не удалось загрузить Tesseract.js (нет сети?)')); };
+      document.head.appendChild(s);
+    });
+    return tesseractPromise;
+  }
+
+  // Файл -> <canvas> с полным изображением (canvas переживает revoke URL и
+  // напрямую скармливается Tesseract).
+  function fileToCanvas(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var cv = document.createElement('canvas');
+        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+        cv.getContext('2d').drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(cv);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Не удалось открыть картинку')); };
+      img.src = url;
+    });
+  }
+
+  // Найти столбец подсвеченного дня (залитый кружок «сегодня»/выбранный день)
+  // и вернуть индекс дня недели 0..6 (Пн..Вс), либо null.
+  function detectWeekdayFromGrid(src) {
+    var sw = src.width || src.naturalWidth, sh = src.height || src.naturalHeight;
+    var W = 480, H = Math.round(sh * (W / sw));
+    var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    var ctx = cv.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(src, 0, 0, W, H);
+    // Полоса, где лежит сетка месяца: ниже строки состояния и названия
+    // месяца, выше списка дел. Берём 17%–58% высоты — с запасом.
+    var y0 = Math.round(H * 0.17), y1 = Math.round(H * 0.58);
+    var bw = y1 - y0;
+    var data = ctx.getImageData(0, y0, W, bw).data;
+    var cols = 64, colH = new Array(cols).fill(0);
+    for (var y = 0; y < bw; y++) {
+      for (var x = 0; x < W; x++) {
+        var i = (y * W + x) * 4, r = data[i], g = data[i + 1], b = data[i + 2];
+        var bright = Math.min(r, g, b) > 205;                       // белый кружок «сегодня» (тёмная тема)
+        var blue = b > 150 && b - r > 45 && b - g > 20;             // синий кружок выбранного дня
+        var red = r > 160 && r - g > 55 && r - b > 45;              // красный кружок «сегодня» (iOS)
+        if (bright || blue || red) colH[Math.min(cols - 1, Math.floor(x / W * cols))]++;
+      }
+    }
+    // Кружок — компактное пятно: ищем самый «тяжёлый» узкий диапазон столбцов.
+    var best = -1, bestSum = 0, span = 5;
+    for (var c = 0; c + span <= cols; c++) {
+      var sum = 0; for (var k = 0; k < span; k++) sum += colH[c + k];
+      if (sum > bestSum) { bestSum = sum; best = c; }
+    }
+    if (best < 0 || bestSum < 60) return null;
+    // Центр пятна по «массе»
+    var num = 0, den = 0;
+    for (var c2 = best; c2 < best + span; c2++) { num += (c2 + 0.5) * colH[c2]; den += colH[c2]; }
+    var cx = (num / den) / cols * W;
+    var col = Math.max(0, Math.min(6, Math.floor(cx / (W / 7))));
+    return col;
+  }
+
+  var TIME_G = /(\d{1,2})[:.,](\d{2})(?!\d)/g;      // 19:00 · 19.00 · 19,00
+  function timeAt(m) {
+    var h = Number(m[1]), min = Number(m[2]);
+    if (h > 23 || min > 59) return null;
+    return h * 60 + min;
+  }
+  function timesIn(line) {
+    var out = [], re = new RegExp(TIME_G.source, 'g'), mm;
+    while ((mm = re.exec(line))) { var v = timeAt(mm); if (v != null) out.push(v); }
+    return out;
+  }
+
+  function parseAgendaEvents(text) {
+    var all = text.replace(/\r/g, '').split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+
+    // Список дел — всё, что ниже сетки месяца. Последняя «сеточная» строка —
+    // это ряд из трёх и более отдельных чисел-дат (без двоеточий).
+    var agendaStart = 0;
+    all.forEach(function (line, i) {
+      var nums = line.match(/\b\d{1,2}\b/g);
+      if (nums && nums.length >= 3 && !/[:.,]\d/.test(line)) agendaStart = i + 1;
+    });
+    var lines = all.slice(agendaStart);
+
+    var noise = /всел? день|весь день|^\d+\s*недел|^(январ|феврал|март|апрел|ма[йя]|июн|июл|авгус|сентябр|октябр|ноябр|декабр)/i;
+    var events = [], pending = '', open = null;
+    function closeOpen() {
+      if (open) {
+        if (open.end == null || open.end <= open.start) open.end = open.start + 60;
+        events.push(open); open = null;
+      }
+    }
+    lines.forEach(function (line) {
+      var times = timesIn(line);
+      var stripped = line.replace(new RegExp(TIME_G.source, 'g'), '').replace(/[–—|]/g, ' ').replace(/\s+-\s+/g, ' ').trim();
+
+      if (times.length >= 2) {
+        closeOpen();
+        events.push({ title: stripped || pending || '', start: times[0], end: times[1] });
+        pending = ''; return;
+      }
+      if (times.length === 1) {
+        if (open && open.end == null && !stripped) { open.end = times[0]; closeOpen(); return; }
+        closeOpen();
+        open = { title: stripped || pending || '', start: times[0], end: null };
+        pending = ''; return;
+      }
+      if (noise.test(line)) { closeOpen(); return; }
+      closeOpen();
+      pending = pending ? pending + ' ' + line : line;
+    });
+    closeOpen();
+
+    return events.map(function (e) {
+      var s = clamp(e.start, DAY_START, DAY_END);
+      var en = clamp(e.end, DAY_START, DAY_END);
+      if (en <= s) en = clamp(s + 60, DAY_START, DAY_END);
+      return { title: (e.title || '').replace(/\s+/g, ' ').trim(), start: s, end: en };
+    }).filter(function (e) { return e.title.length >= 2; });   // отбрасываем мусор без названия
+  }
+
+  var screenshotEvents = [];   // текущий предпросмотр [{title,start,end}]
+
+  function showShotStatus(msg, kind) {
+    var el = document.getElementById('shot-status');
+    el.textContent = msg;
+    el.className = 'import-status' + (kind ? ' ' + kind : '');
+    el.hidden = !msg;
+  }
+
+  function renderShotPreview(weekday) {
+    var box = document.getElementById('shot-preview');
+    var daySel = document.getElementById('shot-day');
+    var list = document.getElementById('shot-list');
+    if (weekday != null) daySel.value = String(weekday);
+    list.innerHTML = '';
+    screenshotEvents.forEach(function (ev, idx) {
+      var li = document.createElement('li');
+      li.className = 'shot-row';
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true; cb.dataset.idx = idx;
+      var name = document.createElement('input'); name.type = 'text'; name.value = ev.title; name.className = 'shot-name';
+      name.addEventListener('input', function () { screenshotEvents[idx].title = name.value; });
+      var t1 = document.createElement('input'); t1.type = 'time'; t1.step = '300'; t1.value = formatTime(ev.start); t1.className = 'shot-time';
+      t1.addEventListener('change', function () { screenshotEvents[idx].start = parseTime(t1.value); });
+      var t2 = document.createElement('input'); t2.type = 'time'; t2.step = '300'; t2.value = formatTime(ev.end); t2.className = 'shot-time';
+      t2.addEventListener('change', function () { screenshotEvents[idx].end = parseTime(t2.value); });
+      li.append(cb, name, t1, t2);
+      list.appendChild(li);
+    });
+    box.hidden = screenshotEvents.length === 0;
+  }
+
+  function processCalendarScreenshot(file) {
+    if (isReadOnly) return;
+    if (!file || !/^image\//.test(file.type)) { showShotStatus('Это не картинка.', 'error'); return; }
+    screenshotEvents = [];
+    renderShotPreview(null);
+    showShotStatus('Загружаю распознавание текста…', null);
+    var weekday = null;
+
+    fileToCanvas(file).then(function (canvas) {
+      try { weekday = detectWeekdayFromGrid(canvas); } catch (e) { weekday = null; }
+      return loadTesseract().then(function (T) {
+        showShotStatus('Распознаю текст на скриншоте… (в первый раз качается словарь, ~15 МБ)', null);
+        return T.createWorker('rus+eng').then(function (worker) {
+          return worker.recognize(canvas).then(function (res) {
+            worker.terminate();
+            return res;
+          }, function (err) { worker.terminate(); throw err; });
+        });
+      });
+    }).then(function (res) {
+      var text = (res && res.data && res.data.text) || '';
+      screenshotEvents = parseAgendaEvents(text);
+      if (!screenshotEvents.length) {
+        showShotStatus('Не нашлось ни одной строки с временем. Убедитесь, что на скриншоте виден список дел выбранного дня.', 'error');
+        renderShotPreview(weekday);
+        return;
+      }
+      renderShotPreview(weekday);
+      var dayTxt = weekday != null ? 'день недели: ' + DAY_NAMES[weekday] + ' (проверьте)' : 'день недели определить не удалось — выберите вручную';
+      showShotStatus('Найдено дел: ' + screenshotEvents.length + '. ' + dayTxt + '.', 'ok');
+    }).catch(function (err) {
+      console.error('Скриншот: ошибка', err);
+      showShotStatus((err && err.message) || 'Не удалось обработать скриншот.', 'error');
+    });
+  }
+
+  function addScreenshotEvents() {
+    if (isReadOnly) return;
+    var day = Number(document.getElementById('shot-day').value);
+    var checks = document.querySelectorAll('#shot-list input[type="checkbox"]');
+    var defaultCategoryId = (state.categories.find(function (c) { return c.isClass; }) || state.categories[0]).id;
+    var chosen = [];
+    checks.forEach(function (cb) {
+      if (!cb.checked) return;
+      var ev = screenshotEvents[Number(cb.dataset.idx)];
+      if (!ev || !ev.title.trim()) return;
+      chosen.push({ id: uid(), title: ev.title.trim(), day: day, start: ev.start, end: ev.end, categoryId: defaultCategoryId, notes: '' });
+    });
+    if (!chosen.length) { showShotStatus('Ни одно дело не отмечено.', 'error'); return; }
+    var added = mergeNewEvents(chosen);
+    var dupes = chosen.length - added;
+    var parts = ['Добавлено в ' + DAY_NAMES[day] + ': ' + added];
+    if (dupes > 0) parts.push('уже было: ' + dupes);
+    showShotStatus(parts.join(', ') + '.', added ? 'ok' : 'error');
+    if (added) { screenshotEvents = []; renderShotPreview(null); document.getElementById('shot-preview').hidden = true; }
+  }
+
+  function bindScreenshotImport() {
+    var fileInput = document.getElementById('shot-file');
+    document.getElementById('btn-shot-file').addEventListener('click', function () { fileInput.click(); });
+    fileInput.addEventListener('change', function (e) {
+      var file = e.target.files[0];
+      if (file) processCalendarScreenshot(file);
+      e.target.value = '';
+    });
+    var drop = document.getElementById('shot-drop');
+    // Вставка картинки из буфера — где угодно на странице (после входа).
+    document.addEventListener('paste', function (e) {
+      if (isReadOnly) return;
+      var items = (e.clipboardData || {}).items || [];
+      for (var i = 0; i < items.length; i++) {
+        if (items[i].type && items[i].type.indexOf('image') === 0) {
+          e.preventDefault();
+          processCalendarScreenshot(items[i].getAsFile());
+          drop.scrollIntoView({ block: 'nearest' });
+          return;
+        }
+      }
+    });
+    ['dragover', 'dragenter'].forEach(function (t) {
+      drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.add('dragover'); });
+    });
+    ['dragleave', 'drop'].forEach(function (t) {
+      drop.addEventListener(t, function (e) { e.preventDefault(); drop.classList.remove('dragover'); });
+    });
+    drop.addEventListener('drop', function (e) {
+      var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) processCalendarScreenshot(file);
+    });
+    document.getElementById('btn-shot-add').addEventListener('click', addScreenshotEvents);
   }
 
   function bindImport() {
@@ -306,6 +574,9 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     } else if (mode === 'loading') {
       pill.classList.remove('readonly');
       text.textContent = 'Загрузка…';
+    } else if (mode === 'error') {
+      pill.classList.add('readonly');
+      text.textContent = 'Нет доступа к базе';
     } else {
       pill.classList.remove('readonly');
       text.textContent = 'Синхронизировано';
@@ -317,6 +588,9 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
   // "Нет соединения" when .info/connected is false, "Синхронизировано" otherwise.
   function refreshConnectionStatus() {
     if (isReadOnly) { setStatus('readonly'); return; }
+    // A hard read failure (usually RTDB security rules that don't grant read
+    // on SCHEDULE_PATH) must not masquerade as a spinner that never resolves.
+    if (loadError && !stateLoaded) { setStatus('error'); return; }
     if (!stateLoaded) { setStatus('loading'); return; }
     if (pendingWrite || syncTimer) { setStatus('saving'); return; }
     setStatus(isConnected ? 'idle' : 'offline');
@@ -334,6 +608,8 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     document.getElementById('import-text').disabled = disable;
     document.getElementById('btn-import').disabled = disable;
     document.getElementById('btn-import-file').disabled = disable;
+    document.getElementById('shot-drop').querySelectorAll('button,input').forEach(function (el) { el.disabled = disable; });
+    document.getElementById('shot-preview').querySelectorAll('input,select,button').forEach(function (el) { el.disabled = disable; });
     render();
     renderCategoryList();
     refreshConnectionStatus();
@@ -579,13 +855,25 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
       // Empty node (hasData === false): keep the empty placeholder on screen.
       // seedIfEmpty() — not this handler — decides whether to populate it.
 
+      loadError = null;
       if (!stateLoaded) {
         stateLoaded = true;
         refreshConnectionStatus();
       }
     }, function (err) {
       console.error('Ошибка чтения из Firebase', err);
-      setStatus('offline');
+      var firstError = !loadError;
+      loadError = err;
+      refreshConnectionStatus();
+      if (firstError && !stateLoaded) {
+        showDialog(
+          'Не удалось загрузить расписание из базы: ' + ((err && err.message) || 'нет доступа') +
+          '. Обычно это значит, что правила безопасности Realtime Database не дают ' +
+          'доступ к узлу «' + SCHEDULE_PATH + '» — добавьте для него правило ' +
+          '".read"/".write" в консоли Firebase (см. README, раздел «Правила безопасности»).',
+          false
+        );
+      }
     });
   }
 
@@ -1209,6 +1497,7 @@ import { firebaseConfig, SCHEDULE_PATH } from './firebase-config.js';
     renderCategoryList();
     bindForms();
     bindImport();
+    bindScreenshotImport();
     bindDialog();
     bindAuth();
     bindUndoRedo();

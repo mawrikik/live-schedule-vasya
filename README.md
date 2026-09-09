@@ -156,20 +156,21 @@ resize, изменение категорий, импорт, «Очистить 
 
 ## Правила безопасности
 
-Рекомендуемые правила: **читают все, пишет только владелец.** Замените в
-консоли (**Realtime Database → Rules**) `YOUR_UID` на свой User UID из
-Firebase Authentication (раздел 4, вкладка Users):
+Рекомендуемые правила: **читают все, пишет только владелец.** Вставьте
+целиком в консоли (**Realtime Database → Rules → Publish**). UID берётся из
+Firebase Authentication (раздел 4, вкладка Users); `auth.uid` в правиле
+`schedule-2` — это UID аккаунта `v.a.rybakin@gmail.com`:
 
 ```json
 {
   "rules": {
     "schedule": {
       ".read": true,
-      ".write": "auth != null && auth.uid === 'YOUR_UID'"
+      ".write": "auth != null && auth.uid === 'xTdhyN3sz5UX95EtIofIrX8Zjmg1'"
     },
     "schedule-2": {
       ".read": true,
-      ".write": "auth != null && auth.uid === 'YOUR_UID'"
+      ".write": "auth != null && auth.uid === 'z0bozaNZGIRn1f3sLazfCk9hff02'"
     },
     ".read": false,
     ".write": false
@@ -178,8 +179,11 @@ Firebase Authentication (раздел 4, вкладка Users):
 ```
 
 > Эта копия использует узел `schedule-2` (см. `SCHEDULE_PATH` в
-> `firebase-config.js`), поэтому правило для `schedule-2` **обязательно** —
-> без него приложение не сможет ни читать, ни писать, и таблица будет пустой.
+> `firebase-config.js`), поэтому правило для `schedule-2` **обязательно**.
+> Без него `onValue('/schedule-2')` падает с `Permission denied`, и после
+> входа владельца страница навсегда зависает на «Загрузка…» (незалогиненный
+> зритель просто видит пустую сетку). Именно этого правила сейчас не хватает
+> в проекте — с ним таблица грузится нормально.
 
 Приложение никогда не пытается писать в базу до входа, поэтому лишних ошибок
 `permission-denied` в консоли браузера не будет.
